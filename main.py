@@ -12,6 +12,7 @@ from machine import I2C, Pin
 import config
 import state
 from actuators import ActuatorManager
+from inputs import DigitalInputManager, input_task
 from sensors import SensorManager, sensor_task
 from control_panels import control_panels_task
 from control_c2 import control_c2_task
@@ -99,12 +100,15 @@ async def main():
     print('[boot] I2C scan:', [hex(addr) for addr in i2c.scan()])
 
     _actuator_mgr = ActuatorManager(i2c)
+    input_mgr = DigitalInputManager(i2c)
     sensor_mgr = SensorManager(i2c)
 
     if config.AUTO_SCAN_ROM_ON_BOOT:
         sensor_mgr.scan()
 
     tasks = [
+        asyncio.create_task(input_task(input_mgr)),
+        asyncio.create_task(input_task(input_mgr)),
         asyncio.create_task(sensor_task(sensor_mgr)),
         asyncio.create_task(control_panels_task(sensor_mgr, _actuator_mgr)),
         asyncio.create_task(control_c2_task(sensor_mgr, _actuator_mgr)),

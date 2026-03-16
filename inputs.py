@@ -1,9 +1,9 @@
 # inputs.py - Digital input management with debounce
 # Handles MCP23008 and direct GPIO for reading digital inputs with debouncing
 
+import uasyncio as asyncio
 import time
 import config
-import state
 from machine import Pin
 
 class MCP23008:
@@ -60,9 +60,6 @@ class DigitalInputManager:
 
     def read_all(self):
         """Read all inputs with debouncing."""
-        if self.mcp is None:
-            return dict(self.values)
-
         current_time = time.ticks_ms()
 
         for name, pin in config.INPUT_PINS.items():
@@ -72,6 +69,8 @@ class DigitalInputManager:
                         raw_value = self.gpio27.value() == 1  # Assuming active high
                     elif name == "HEAT_HELP_REQUEST":
                         raw_value = self.gpio26.value() == 1  # Assuming active high
+                    elif self.mcp is None:
+                        raw_value = False
                     else:
                         raw_value = self.mcp.read_pin(pin)
                 except Exception as e:
@@ -91,3 +90,8 @@ class DigitalInputManager:
 
     def snapshot(self):
         return dict(self.values)
+
+async def input_task(input_mgr):
+    while True:
+        input_mgr.read_all()
+        await asyncio.sleep(config.INPUT_POLL_INTERVAL_S)

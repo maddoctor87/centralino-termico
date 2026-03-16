@@ -75,9 +75,10 @@ RELAY_OUTPUTS = {
 MCP23008_ADDR = 0x21
 
 INPUT_PINS = {
-    'I0_5': 27,   # GPIO27 - ingresso diretto (es. termostato piscina)
-    'I0_6': 26,   # GPIO26 - ingresso diretto (es. richiesta riscaldamento)
+    'POOL_THERMOSTAT_CALL': 27,   # GPIO27 - ingresso diretto
+    'HEAT_HELP_REQUEST': 26,      # GPIO26 - ingresso diretto
 }
+INPUT_DEBOUNCE_MS = 50
 
 # ── DS2482 @ 0x18 — master 1-Wire per DS18B20 ────────────────────────────────
 DS2482_ADDR = 0x18
