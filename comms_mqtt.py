@@ -1,10 +1,10 @@
 # --- comms_mqtt.py ---
-# MQTT: publish snapshot periodico + ricezione comando antilegionella.
-# umqtt.simple è incluso nel firmware MicroPython ESP32 standard.
+# MQTT: publish snapshot periodico + ricezione comandi da portale.
 
 import uasyncio as asyncio
 import ujson
 import time
+
 import config
 import state
 
@@ -16,7 +16,7 @@ def _connect():
     from umqtt.simple import MQTTClient
     c = MQTTClient(
         config.MQTT_CLIENT_ID,
-        config.MQTT_HOST,
+        config.MQTT_BROKER,
         port=config.MQTT_PORT,
         user=config.MQTT_USER,
         password=config.MQTT_PASS,
@@ -36,7 +36,6 @@ def _decode_msg(msg):
 
 
 def _on_cmd(topic, msg):
-    """Callback messaggi in ingresso da portale/server."""
     try:
         d = _decode_msg(msg)
         if not isinstance(d, dict):
@@ -52,7 +51,7 @@ def _on_cmd(topic, msg):
 
         relay_cmd = d.get('relay')
         if isinstance(relay_cmd, dict):
-            name = relay_cmd.get('name')
+            name  = relay_cmd.get('name')
             value = relay_cmd.get('state')
             if name in config.RELAY_OUTPUTS:
                 state.set_manual_relay(name, value)
@@ -65,31 +64,33 @@ def _on_cmd(topic, msg):
 
         setpoint_cmd = d.get('setpoint')
         if isinstance(setpoint_cmd, dict):
-            key = setpoint_cmd.get('key')
+            key   = setpoint_cmd.get('key')
             value = setpoint_cmd.get('value')
             if key in config.SETPOINTS and value is not None:
-                saved = state.set_setpoint(key, value)
-                print('[mqtt] setpoint {} -> {}'.format(key, saved))
+                try:
+                    state.setpoints[key] = state._normalize_setpoint(key, value)
+                    state.save_settings()
+                    print('[mqtt] setpoint {} -> {}'.format(key, state.setpoints[key]))
+                except Exception as e:
+                    print('[mqtt] setpoint error:', e)
 
         tuning = d.get('tuning')
         if isinstance(tuning, dict):
-            # Parametri di tuning (ad es. per C1 PWM)
             mapping = {
                 'delta_pwm_min': 'C1_DELTA_PWM_MIN',
                 'delta_pwm_max': 'C1_DELTA_PWM_MAX',
-                'pwm_min': 'C1_PWM_MIN',
-                'pwm_max': 'C1_PWM_MAX',
+                'pwm_min':       'C1_PWM_MIN',
+                'pwm_max':       'C1_PWM_MAX',
             }
             for key, cfg_name in mapping.items():
                 if key in tuning:
                     try:
-                        val = float(tuning[key])
-                        setattr(config, cfg_name, val)
-                        print('[mqtt] tuning {} -> {}'.format(cfg_name, val))
+                        setattr(config, cfg_name, float(tuning[key]))
+                        print('[mqtt] tuning {} -> {}'.format(cfg_name, getattr(config, cfg_name)))
                     except Exception:
                         pass
 
-        state.last_snapshot_ts = 0
+        state.last_snapshot_ts = 0  # forza publish immediato
     except Exception as e:
         print('[mqtt] on_cmd error:', e)
 
@@ -99,11 +100,10 @@ def publish_snapshot():
     if _client is None:
         return
     try:
-        payload = ujson.dumps(state.snapshot())
-        _client.publish(config.MQTT_TOPIC_STATE, payload)
+        _client.publish(config.MQTT_TOPIC_STATE, ujson.dumps(state.snapshot()))
     except Exception as e:
         print('[mqtt] publish error:', e)
-        _client = None  # forza riconnessione
+        _client = None
 
 
 async def mqtt_task():
@@ -118,14 +118,14 @@ async def mqtt_task():
                 continue
 
         try:
-            _client.check_msg()  # non bloccante
+            _client.check_msg()
         except Exception as e:
             print('[mqtt] check_msg error:', e)
             _client = None
 
         now = time.time()
-        if now - state.last_snapshot_ts >= config.MQTT_PUBLISH_INTERVAL_MS / 1000:
+        if now - state.last_snapshot_ts >= config.SNAPSHOT_INTERVAL_S:
             publish_snapshot()
             state.last_snapshot_ts = now
 
-        await asyncio.sleep(5)
+        await asyncio.sleep(1)

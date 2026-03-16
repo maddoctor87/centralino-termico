@@ -11,13 +11,12 @@ from machine import I2C, Pin
 
 import config
 import state
-from outputs import ActuatorManager
+from actuators import ActuatorManager
 from sensors import SensorManager, sensor_task
-from inputs import DigitalInputManager
 from control_panels import control_panels_task
 from control_c2 import control_c2_task
 from control_recirc import control_recirc_task
-from control_block2_pool_heat_pdc import block2_controller
+from control_aux import control_aux_task
 from comms_mqtt import mqtt_task
 
 _actuator_mgr = None
@@ -27,7 +26,7 @@ _eth_int = None
 _eth_lan = None
 
 
-def eth_connect():
+async def eth_connect():
     global _eth_spi, _eth_cs, _eth_int, _eth_lan
 
     if not config.ETH_ENABLED:
@@ -74,7 +73,7 @@ def eth_connect():
             if time.ticks_diff(deadline, time.ticks_ms()) <= 0:
                 print('[eth] timeout link, continuo senza rete')
                 return False
-            time.sleep_ms(100)
+            await asyncio.sleep_ms(100)
 
         print('[eth] connesso:', _eth_lan.ifconfig()[0])
         return True
@@ -88,7 +87,7 @@ async def main():
     global _actuator_mgr
 
     print('[boot] {} skeleton'.format(config.BOARD_NAME))
-    eth_connect()
+    await eth_connect()
     state.load_settings()
 
     i2c = I2C(
@@ -101,26 +100,16 @@ async def main():
 
     _actuator_mgr = ActuatorManager(i2c)
     sensor_mgr = SensorManager(i2c)
-    input_mgr = DigitalInputManager(i2c)
 
     if config.AUTO_SCAN_ROM_ON_BOOT:
         sensor_mgr.scan()
 
-    async def block2_task(sensor_mgr, actuator_mgr, input_mgr):
-        while True:
-            try:
-                block2_controller.run_once(actuator_mgr, input_mgr.inputs)
-            except Exception as e:
-                print('[block2] exception:', e)
-            await asyncio.sleep(config.CONTROL_INTERVAL_MS / 1000)
-
     tasks = [
         asyncio.create_task(sensor_task(sensor_mgr)),
-        asyncio.create_task(input_task()),
         asyncio.create_task(control_panels_task(sensor_mgr, _actuator_mgr)),
         asyncio.create_task(control_c2_task(sensor_mgr, _actuator_mgr)),
         asyncio.create_task(control_recirc_task(sensor_mgr, _actuator_mgr)),
-        asyncio.create_task(block2_task(sensor_mgr, _actuator_mgr, input_mgr)),
+        asyncio.create_task(control_aux_task(_actuator_mgr)),
     ]
     if config.MQTT_ENABLED:
         tasks.append(asyncio.create_task(mqtt_task()))
@@ -135,7 +124,8 @@ try:
 except KeyboardInterrupt:
     print('[boot] stop manuale')
 except Exception as e:
-    print('[boot] fatal:', e)
+    import sys
+    sys.print_exception(e)
 finally:
     if _actuator_mgr is not None:
         _actuator_mgr.all_off()

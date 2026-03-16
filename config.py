@@ -1,54 +1,159 @@
-# --- control_c2.py ---
-# Controllo Pompa C2: trasferimento solare -> PDC.
+# config.py — ESP32 PLC 21 (Industrial Shields)
+# Pin mapping verificato su manuale Rev.9 (Nov 2022)
 
-import uasyncio as asyncio
+BOARD_NAME = 'Industrial Shields ESP32 PLC 21'
 
-import config
-import state
+# ── Ethernet W5500 (SPI interno, pin fissi dal manuale) ───────────────────────
+ETH_ENABLED   = True
+ETH_SPI_ID    = 2
+ETH_SPI_BAUD  = 10_000_000
+ETH_SCK       = 18    # GPIO18 - confermato manuale
+ETH_MOSI      = 23    # GPIO23 - confermato manuale
+ETH_MISO      = 19    # GPIO19 - confermato manuale
+ETH_CS        = 15    # GPIO15 - CS W5500
+ETH_INT       = 4     # GPIO4  - INT W5500
+ETH_TIMEOUT_S = 10
+ETH_USE_DHCP  = False
+ETH_STATIC_IP = '192.168.10.210'
+ETH_NETMASK   = '255.255.255.0'
+ETH_GATEWAY   = '192.168.10.1'
+ETH_DNS       = '192.168.10.1'
 
+# ── MQTT ──────────────────────────────────────────────────────────────────────
+MQTT_ENABLED        = True
+MQTT_BROKER         = '192.168.10.20'
+MQTT_PORT           = 1883
+MQTT_CLIENT_ID      = 'esp32_centralina_acs'
+MQTT_USER           = 'relay_sensor'
+MQTT_PASS           = 'RelaySensor!2024'
+MQTT_TOPIC_STATE    = 'centralina/state'
+MQTT_TOPIC_CMD      = 'centralina/cmd'
+MQTT_KEEPALIVE      = 60
+MQTT_QOS            = 1
 
-def run_once(sensor_mgr, actuator_mgr):
-    if state.manual_mode:
-        actuator_mgr.set_relay('C2', state.manual_relays.get('C2', False))
-        return
+# ── I2C (pin fissi ESP32 PLC 21, confermati manuale) ─────────────────────────
+I2C_ID   = 0
+I2C_SDA  = 21    # GPIO21 - SDA
+I2C_SCL  = 22    # GPIO22 - SCL
+I2C_FREQ = 100_000
 
-    # Sicurezza: sensori mancanti
-    for label in ('S1', 'S2', 'S3', 'S4', 'S5'):
-        if state.temps.get(label) is None:
-            actuator_mgr.set_relay('C2', config.SAFE_RELAY_STATE)
-            return
+# ── PCA9685 @ 0x40 — uscite digitali/analogiche via I2C ─────────────────────
+# Mappatura canali verificata su manuale Rev.9, tabella equivalenze I/O:
+#   Q0.0 → ch 11   Q0.1 → ch 10   Q0.2 → ch 9    Q0.3 → ch 8
+#   Q0.4 → ch 12   Q0.5/A0.5 → ch 13 (0-10V, richiede switch B ON)
+#   Q0.6/A0.6 → ch 6   Q0.7/A0.7 → ch 7
+PCA9685_ADDR = 0x40
+PCA9685_FREQ = 1000   # Hz — relay digitali
 
-    s1 = state.temps['S1']
-    s2 = state.temps['S2']
-    s3 = state.temps['S3']
-    s4 = state.temps['S4']
-    s5 = state.temps['S5']
+DO_C2_CH   = 11   # Q0.0 → Pompa trasferimento solare -> PDC
+DO_CR_CH   = 10   # Q0.1 → Pompa ricircolo
+DO_P4_CH   =  9   # Q0.2 → Pompa 4 (piscina)
+DO_P5_CH   =  8   # Q0.3 → spare
+DO_VALVE_CH= 12   # Q0.4 → Valvola motorizzata fail-safe
 
-    # Hard stop: boiler PDC troppo caldo
-    if s4 >= config.C2_HARD_STOP_TEMP:
-        state.c2_on_state = False
-        actuator_mgr.set_relay('C2', False)
-        return
+# Uscita analogica 0-10V per pompa Wilo C1
+# NOTA: switch B zona deve essere ON per abilitare A0.5
+C1_PWM_CH      = 13   # Q0.5/A0.5 → segnale 0-10V Wilo
+C1_USE_PCA9685 = True # True = PCA9685 ch13; False = GPIO PWM su C1_PWM_PIN
+C1_PWM_PIN     = 17   # TX2 (usato solo se C1_USE_PCA9685 = False)
+C1_PWM_FREQ_HZ = 1000
 
-    # Delta solare = media pannelli - boiler PDC alto
-    delta = ((s2 + s3) / 2.0) - s1
+# ── Relay outputs — dizionario unico, usato da actuators.py e state.py ────────
+RELAY_OUTPUTS = {
+    'C2':    DO_C2_CH,    # Q0.0 - Pompa solare->PDC
+    'CR':    DO_CR_CH,    # Q0.1 - Ricircolo
+    'P4':    DO_P4_CH,    # Q0.2 - Piscina
+    'P5':    DO_P5_CH,    # Q0.3 - spare
+    'VALVE': DO_VALVE_CH, # Q0.4 - Valvola
+}
 
-    # Isteresi
-    if state.c2_on_state:
-        new_state = delta > config.C2_DELTA_OFF
-    else:
-        new_state = delta > config.C2_DELTA_ON
+# ── MCP23008 @ 0x21 — ingressi digitali isolati I0.0-I0.4 ────────────────────
+# Pin MCP23008 per i0.x (da manuale, encoding: addr=0x21, pin=N)
+#   I0.0 → pin 6   I0.1 → pin 4   I0.2 → pin 5
+#   I0.3 → pin 3   I0.4 → pin 2
+# I0.5 = GPIO27 (diretto), I0.6 = GPIO26 (diretto) — non isolati
+MCP23008_ADDR = 0x21
 
-    state.c2_on_state = new_state
-    actuator_mgr.set_relay('C2', new_state)
+INPUT_PINS = {
+    'I0_5': 27,   # GPIO27 - ingresso diretto (es. termostato piscina)
+    'I0_6': 26,   # GPIO26 - ingresso diretto (es. richiesta riscaldamento)
+}
 
+# ── DS2482 @ 0x18 — master 1-Wire per DS18B20 ────────────────────────────────
+DS2482_ADDR = 0x18
 
-async def control_c2_task(sensor_mgr, actuator_mgr):
-    print('[C2] controllo trasferimento solare avviato')
-    while True:
-        try:
-            run_once(sensor_mgr, actuator_mgr)
-        except Exception as e:
-            print('[C2] exception:', e)
-            actuator_mgr.set_relay('C2', config.SAFE_RELAY_STATE)
-        await asyncio.sleep(config.CONTROL_INTERVAL_S)
+# ── Sensori DS18B20 — ROM da sostituire dopo scan reale ──────────────────────
+SENSOR_LABELS = ('S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7')
+
+ROM_MAP = {
+    'S1': None,   # Pannelli solari
+    'S2': None,   # Boiler solare centro
+    'S3': None,   # Boiler solare alto
+    'S4': None,   # Boiler PDC alto
+    'S5': None,   # Boiler PDC basso
+    'S6': None,   # Collettore ricircolo in
+    'S7': None,   # Collettore ricircolo out
+}
+
+AUTO_SCAN_ROM_ON_BOOT = False
+
+# ── Logiche C1 (pompa Wilo, PWM 0-10V) ───────────────────────────────────────
+C1_DELTA_PWM_MIN  = 2.0    # delta minimo per avviare (°C)
+C1_DELTA_PWM_MAX  = 10.0   # delta per 100% duty (°C)
+C1_PWM_MIN        = 10     # duty minimo % quando accesa
+C1_PWM_MAX        = 100    # duty massimo %
+C1_THIGH_FULL     = 70.0   # S4: sotto questa temp, nessuna riduzione potenza
+C1_THIGH_STOP     = 85.0   # S4: sopra questa temp, duty scalato a 0
+C1_STAGNATION_TEMP= 130.0  # S1: anti-stagnazione pannelli
+C1_STAGNATION_DUTY= 30     # duty minimo anti-stagnazione %
+C1_STOP_HARD_TEMP = 85.0   # S4 >= questo -> C1 si ferma (hard stop)
+C1_LATCH_RESET_TEMP= 70.0  # S4 <= questo -> reset latch hard stop
+
+# ── Logiche C2 (pompa trasferimento solare -> PDC) ────────────────────────────
+C2_DELTA_ON       = 5.0    # delta solare > PDC per accendere (°C)
+C2_DELTA_OFF      = 3.0    # delta solare > PDC per restare accesa (°C)
+C2_HARD_STOP_TEMP = 85.0   # S4 >= questo -> C2 si ferma
+
+# ── Logiche CR (ricircolo ACS) ────────────────────────────────────────────────
+CR_TARGET_NORMAL  = 45.0   # setpoint normale (°C)
+CR_HYSTERESIS_NORMAL = 4.0 # isteresi normale (°C)
+CR_TARGET_EMERG   = 70.0   # setpoint emergenza/antilegionella (°C)
+CR_HYSTERESIS_EMERG = 3.0  # isteresi emergenza (°C)
+CR_EMERG_TEMP     = 80.0   # S4 >= questo -> modalità emergenza
+
+# ── Antilegionella ────────────────────────────────────────────────────────────
+ANTILEGIONELLA_OK_SECONDS = 3600
+
+# ── Setpoint configurabili da portale ────────────────────────────────────────
+SETPOINTS_FILE = '/acs_setpoints.json'
+SETPOINTS = {
+    'solar_target_c': {
+        'label': 'Target solare', 'default': 55.0,
+        'min': 20.0, 'max': 95.0, 'step': 0.5,
+    },
+    'pdc_target_c': {
+        'label': 'Target boiler PDC', 'default': 50.0,
+        'min': 20.0, 'max': 95.0, 'step': 0.5,
+    },
+    'recirc_target_c': {
+        'label': 'Target ricircolo', 'default': 45.0,
+        'min': 20.0, 'max': 80.0, 'step': 0.5,
+    },
+    'antileg_target_c': {
+        'label': 'Target antilegionella', 'default': 70.0,
+        'min': 55.0, 'max': 80.0, 'step': 0.5,
+    },
+}
+
+# ── Timing ────────────────────────────────────────────────────────────────────
+SENSOR_INTERVAL_S    = 5
+CONTROL_INTERVAL_S   = 5
+SNAPSHOT_INTERVAL_S  = 5
+INPUT_POLL_INTERVAL_S= 1
+
+# ── Safe state ────────────────────────────────────────────────────────────────
+SAFE_RELAY_STATE = False
+SAFE_PWM_DUTY    = 0
+
+# ── Boot diagnostics ──────────────────────────────────────────────────────────
+BOOT_TEST_OUTPUTS = False

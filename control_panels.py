@@ -2,7 +2,6 @@
 # Controllo C1 (pompa pannelli solari PWM) secondo regole termiche.
 
 import uasyncio as asyncio
-import time
 
 import config
 import state
@@ -20,7 +19,7 @@ def _map_linear(x, in_min, in_max, out_min, out_max):
 
 
 def _compute_c1_duty(temps):
-    # Se mancano sensori critici, spegni la pompa per sicurezza.
+    # Sensori critici mancanti: spegni
     for label in ('S1', 'S2', 'S3', 'S4'):
         if temps.get(label) is None:
             return 0, False
@@ -31,39 +30,52 @@ def _compute_c1_duty(temps):
     s4 = temps['S4']
 
     thigh = max(s2, s3)
-    tavg = (s2 + s3) / 2.0
+    tavg  = (s2 + s3) / 2.0
     delta = s1 - tavg
 
-    # Hard stop PDC
-    if s4 >= config.C1_HARD_STOP_TEMP:
+    # Hard stop: boiler PDC troppo caldo
+    if s4 >= config.C1_STOP_HARD_TEMP:
         return 0, True
 
-    # Clear latch if condizioni consentono
+    # Reset latch se boiler PDC si è raffreddato
     if state.c1_latched_hard_stop and thigh <= config.C1_LATCH_RESET_TEMP:
         state.c1_latched_hard_stop = False
 
     if state.c1_latched_hard_stop:
         return 0, True
 
-    # Base duty mapping
-    duty = _map_linear(delta, config.C1_DELTA_PWM_MIN, config.C1_DELTA_PWM_MAX, config.C1_PWM_MIN, config.C1_PWM_MAX)
+    # Isteresi ON/OFF sul delta
+    if state.c1_on_state:
+        if delta < config.C1_DELTA_PWM_MIN:
+            return 0, False
+    else:
+        if delta < config.C1_DELTA_PWM_MIN:
+            return 0, False
 
-    # Freno in funzione della temperatura massima solare
-    if thigh <= config.C1_FRICTION_FACTOR_START:
+    # Duty proporzionale al delta
+    duty = _map_linear(
+        delta,
+        config.C1_DELTA_PWM_MIN,
+        config.C1_DELTA_PWM_MAX,
+        config.C1_PWM_MIN,
+        config.C1_PWM_MAX,
+    )
+
+    # Riduzione progressiva per proteggere il boiler solare
+    if thigh <= config.C1_THIGH_FULL:
         factor = 1.0
-    elif thigh >= config.C1_FRICTION_FACTOR_END:
+    elif thigh >= config.C1_THIGH_STOP:
         factor = 0.0
     else:
-        factor = (config.C1_FRICTION_FACTOR_END - thigh) / (config.C1_FRICTION_FACTOR_END - config.C1_FRICTION_FACTOR_START)
+        factor = (config.C1_THIGH_STOP - thigh) / (config.C1_THIGH_STOP - config.C1_THIGH_FULL)
 
     duty *= factor
 
-    # Override anti-stagnazione
-    if s1 >= config.C1_OVERRIDE_TEMP and thigh >= config.C1_FRICTION_FACTOR_END:
+    # Anti-stagnazione pannelli: forza duty minimo
+    if s1 >= config.C1_STAGNATION_TEMP and thigh >= config.C1_THIGH_STOP:
         duty = max(duty, config.C1_STAGNATION_DUTY)
 
-    duty = int(_clamp(duty, 0, 100))
-    return duty, False
+    return int(_clamp(duty, 0, 100)), False
 
 
 def run_once(sensor_mgr, actuator_mgr):
@@ -73,8 +85,8 @@ def run_once(sensor_mgr, actuator_mgr):
 
     duty, latched = _compute_c1_duty(state.temps)
     state.c1_latched_hard_stop = latched
-    actuator_mgr.set_c1_pwm(duty)
     state.c1_on_state = duty > 0
+    actuator_mgr.set_c1_pwm(duty)
 
 
 async def control_panels_task(sensor_mgr, actuator_mgr):
@@ -85,4 +97,4 @@ async def control_panels_task(sensor_mgr, actuator_mgr):
         except Exception as e:
             print('[C1] exception:', e)
             actuator_mgr.set_c1_pwm(config.SAFE_PWM_DUTY)
-        await asyncio.sleep(config.CONTROL_INTERVAL_MS / 1000)
+        await asyncio.sleep(config.CONTROL_INTERVAL_S)

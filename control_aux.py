@@ -1,6 +1,9 @@
-# Controllo uscite ausiliarie senza logica automatica confermata.
+# --- control_aux.py ---
+# Controllo uscite ausiliarie (P4, P5, VALVE).
+# Logica automatica TODO: per ora solo modalità manuale o safe state.
 
 import uasyncio as asyncio
+
 import config
 import state
 

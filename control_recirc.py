@@ -1,5 +1,5 @@
 # --- control_recirc.py ---
-# Controllo ricircolo / CR + ciclo antilegionella.
+# Controllo ricircolo CR + ciclo antilegionella.
 
 import uasyncio as asyncio
 import time
@@ -8,10 +8,10 @@ import config
 import state
 
 
-def _hysteresis_state(current, value, on_thresh, off_thresh):
+def _hysteresis(current, value, on_thresh, off_thresh):
     if current:
-        return value >= off_thresh
-    return value > on_thresh
+        return value < off_thresh   # spegni sotto off_thresh
+    return value >= on_thresh       # accendi sopra on_thresh
 
 
 def run_once(sensor_mgr, actuator_mgr):
@@ -19,56 +19,51 @@ def run_once(sensor_mgr, actuator_mgr):
         actuator_mgr.set_relay('CR', state.manual_relays.get('CR', False))
         return
 
-    # Se mancano sensori, spegni per sicurezza.
-    if state.temps.get('S6') is None and state.temps.get('S7') is None:
+    # Sensori collettore: almeno uno valido
+    s6 = state.temps.get('S6')
+    s7 = state.temps.get('S7')
+    valid = [t for t in (s6, s7) if t is not None]
+    if not valid:
         actuator_mgr.set_relay('CR', config.SAFE_RELAY_STATE)
         return
 
-    # Antilegionella: priorità, basata su S4 o richiesta via MQTT.
-    s4 = state.temps.get('S4')
-    tcol = min(filter(lambda x: x is not None, (state.temps.get('S6'), state.temps.get('S7'))))
+    tcol = min(valid)
+    s4   = state.temps.get('S4')
 
-    emerg = False
-    if s4 is not None and s4 >= config.CR_EMERG_ON_TEMP:
-        emerg = True
-
-    if state.antileg_request:
-        emerg = True
+    # Emergenza: S4 alta o richiesta antilegionella via MQTT
+    emerg = (s4 is not None and s4 >= config.CR_EMERG_TEMP) or state.antileg_request
+    state.cr_emerg_mode = emerg
 
     # Gestione timer antilegionella
     if state.antileg_request:
-        if tcol >= config.CR_EMERG_OFF_TEMP:
+        if tcol >= config.CR_TARGET_EMERG:
             if state.antileg_hold_start is None:
                 state.antileg_hold_start = time.time()
             elapsed = time.time() - state.antileg_hold_start
-            if elapsed >= config.CR_ANTILEG_DURATION_S:
+            if elapsed >= config.ANTILEGIONELLA_OK_SECONDS:
                 if not state.antileg_ok:
-                    print('[CR] antilegionella OK ({}s)'.format(elapsed))
-                state.antileg_ok = True
+                    print('[CR] antilegionella OK ({}s)'.format(int(elapsed)))
+                state.antileg_ok    = True
                 state.antileg_ok_ts = time.time()
             else:
                 state.antileg_ok = False
         else:
             state.antileg_hold_start = None
-            state.antileg_ok = False
+            state.antileg_ok         = False
     else:
         state.antileg_hold_start = None
-        state.antileg_ok = False
+        state.antileg_ok         = False
 
-    # Determina target e hysteresis
+    # Soglie isteresi in base alla modalità
     if emerg:
-        target = config.CR_EMERG_OFF_TEMP
-        hyst = config.CR_HYSTERESIS_OFF
-        state.cr_emerg_mode = True
+        on_thresh  = config.CR_TARGET_EMERG  - config.CR_HYSTERESIS_EMERG
+        off_thresh = config.CR_TARGET_EMERG
     else:
-        target = config.CR_NORMAL_OFF_TEMP
-        hyst = config.CR_HYSTERESIS_OFF
-        state.cr_emerg_mode = False
+        on_thresh  = config.CR_TARGET_NORMAL - config.CR_HYSTERESIS_NORMAL
+        off_thresh = config.CR_TARGET_NORMAL
 
-    on_thresh = target - hyst
-    off_thresh = target
-
-    new_state = _hysteresis_state(state.cr_on_state, tcol, on_thresh, off_thresh)
+    new_state = _hysteresis(state.cr_on_state, tcol, on_thresh, off_thresh)
+    state.cr_on_state = new_state
     actuator_mgr.set_relay('CR', new_state)
 
 
@@ -80,4 +75,4 @@ async def control_recirc_task(sensor_mgr, actuator_mgr):
         except Exception as e:
             print('[CR] exception:', e)
             actuator_mgr.set_relay('CR', config.SAFE_RELAY_STATE)
-        await asyncio.sleep(config.CONTROL_INTERVAL_MS / 1000)
+        await asyncio.sleep(config.CONTROL_INTERVAL_S)
