@@ -7,7 +7,6 @@
 import config
 import state
 
-from machine import Pin, PWM
 
 # ── PCA9685 driver (I2C) ──────────────────────────────────────────────────────
 # Registri per canale n: base = 0x06 + 4*n
@@ -109,25 +108,13 @@ class RelayOutput:
 
 
 # ── PWMOutput (C1) ───────────────────────────────────────────────────────────
-# Supporta due modalità:
-# - PCA9685 (0-10 Vdc su Q0.5/A0.5)
-# - PWM onboard su pin TX2 (se il driver optoisolatore gestisce il segnale)
+# Uscita PWM C1 solo su PCA9685 ch13 (Q0.5 / A0.5).
 
 class PWMOutput:
-    def __init__(self, pca=None, ch=None, pin=None, freq_hz=1000):
+    def __init__(self, pca, ch):
         self._pca = pca
         self._ch = ch
         self._duty = 0
-        self._pwm = None
-
-        if not config.C1_USE_PCA9685:
-            try:
-                self._pwm = PWM(Pin(pin), freq=freq_hz)
-                self._pwm.duty_u16(0)
-            except Exception as e:
-                print('[pwm] init error:', e)
-                self._pwm = None
-
         state.set_c1_duty(0)
 
     @property
@@ -140,10 +127,8 @@ class PWMOutput:
             return
         self._duty = duty_percent
 
-        if config.C1_USE_PCA9685 and self._pca is not None and self._ch is not None:
+        if self._pca is not None and self._ch is not None:
             self._pca.set_pwm(self._ch, duty_percent * 4095 // 100)
-        elif self._pwm is not None:
-            self._pwm.duty_u16(duty_percent * 65535 // 100)
 
         state.set_c1_duty(duty_percent)
         print('[pwm] C1={}%' .format(duty_percent))
@@ -167,11 +152,8 @@ class ActuatorManager:
         except Exception as e:
             print('[actuators] PCA9685 non disponibile:', e)
 
-        # Output PWM C1: può essere via PCA9685 (A0.5) o via pin TX2 (TTL) + optoisolatore
-        if config.C1_USE_PCA9685:
-            self.c1_pwm = PWMOutput(self._pca, config.C1_PWM_CH, None, config.C1_PWM_FREQ_HZ)
-        else:
-            self.c1_pwm = PWMOutput(None, None, config.C1_PWM_PIN, config.C1_PWM_FREQ_HZ)
+        # Output PWM C1 solo su Q0.5 / A0.5 via PCA9685 ch13
+        self.c1_pwm = PWMOutput(self._pca, config.C1_PWM_CH)
 
         for name, ch in config.RELAY_OUTPUTS.items():
             self.relays[name] = RelayOutput(name, self._pca, ch)

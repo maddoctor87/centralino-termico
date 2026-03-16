@@ -16,7 +16,7 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
   - Se delta > soglia minima, attiva C1 con duty cycle basato su friction factor e hysteresis.
   - Override manuale, hard stop su allarmi sensori.
   - Antilegionella: Ciclo periodico per prevenire batteri (configurabile).
-- **Uscita**: C1 PWM (GPIO17 o PCA9685 ch13).
+- **Uscita**: C1 PWM su Q0.5 / A0.5 tramite PCA9685 ch13.
 - **Ingressi**: Temperature S1-S3.
 
 ### Block 2: Logiche piscina e riscaldamento
@@ -44,8 +44,8 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 
 ## 3. Gestione I/O
 - **Sensori temperatura** (`sensors.py`): DS18B20 via DS2482, lettura asincrona ogni 1s, validazione, allarmi su sensori invalidi.
-- **Attuatori** (`outputs.py`): PCA9685 per relè/PWM, safe state OFF.
-- **Ingressi digitali** (`inputs.py`): MCP23008 + GPIO diretti, debounce 100ms.
+- **Attuatori** (`actuators.py`): PCA9685 per relè/PWM, safe state OFF.
+- **Ingressi digitali** (`inputs.py`): MCP23008 + GPIO diretti, debounce configurabile (`INPUT_DEBOUNCE_MS`, attualmente 50ms).
 
 ## 4. Comunicazioni
 - **MQTT** (`comms_mqtt.py`): Connessione a broker, publish snapshot ogni 10s su `centralina/state`, subscribe comandi su `centralina/cmd` (manual override, antileg, setpoints).
