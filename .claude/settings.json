@@ -1,0 +1,50 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh sstit:*)",
+      "Bash(scp /tmp/acs.py sstit:~/docker-server/backend/acs.py)",
+      "Bash(mpremote connect:*)",
+      "Bash(mpremote exec:*)",
+      "Bash(\"/home/mad/centralino centrale:*)",
+      "Bash(mpremote cp:*)",
+      "Bash(ssh mad@100.107.220.5 \"ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null && python3 -c ''import mpremote'' 2>&1 || echo ''mpremote not found''\")",
+      "Bash(ssh mad@100.107.220.5 \"ls /dev/ttyUSB0 /dev/ttyACM0 2>/dev/null; which mpremote; python3 -m mpremote connect list\")",
+      "Bash(ssh mad@100.107.220.5 \"pip install mpremote -q && mpremote connect /dev/ttyUSB0 exec ''print\\(1+1\\)''\")",
+      "Bash(ssh mad@100.107.220.5 \"~/.local/bin/mpremote connect /dev/ttyUSB0 ls\")",
+      "Bash(ssh mad@100.107.220.5 \"~/.local/bin/mpremote connect /dev/ttyUSB0 cat main.py\")",
+      "Bash(ssh mad@100.107.220.5 \"~/.local/bin/mpremote connect /dev/ttyUSB0 cat config.py\")",
+      "Bash(ssh mad@100.107.220.5 \"nc -zv 192.168.10.20 1883 2>&1 || echo ''fallito''\")",
+      "Bash(ssh mad@100.107.220.5 \"timeout 5 cat /dev/ttyUSB0 2>&1 || true\")",
+      "Bash(ssh mad@100.107.220.5 \"~/.local/bin/mpremote reset && sleep 10 && timeout 8 ~/.local/bin/mpremote connect /dev/ttyUSB0 repl 2>&1 | head -40 || true\")",
+      "Bash(ssh -t mad@100.107.220.5 \"~/.local/bin/mpremote reset && sleep 12 && stty -F /dev/ttyUSB0 115200 raw && timeout 10 cat /dev/ttyUSB0\")",
+      "Bash(ssh mad@100.107.220.5 \"bash -lc ''mpremote connect /dev/ttyUSB0 ls''\")",
+      "Bash(ssh mad@100.107.220.5 \"bash -lc ''mpremote connect /dev/ttyUSB0 cat control_c2.py''\")",
+      "Bash(ssh mad@100.107.220.5 \"bash -lc ''mpremote connect /dev/ttyUSB0 exec \"\"import state, config; print\\(state.manual_mode, state.manual_relays\\); from actuators import ActuatorManager; from machine import I2C, Pin; i2c = I2C\\(config.I2C_ID, sda=Pin\\(config.I2C_SDA\\), scl=Pin\\(config.I2C_SCL\\), freq=config.I2C_FREQ\\); print\\([hex\\(a\\) for a in i2c.scan\\(\\)]\\)\"\"''\")",
+      "Bash(ssh mad@100.107.220.5 \"bash -lc ''mpremote connect /dev/ttyUSB0 cat boot.py''\")",
+      "Bash(ssh mad@100.107.220.5 \"bash -lc ''mpremote connect /dev/ttyUSB0 reset''\")",
+      "Bash(ssh mad@100.107.220.5 \"bash -lc ''mpremote connect /dev/ttyUSB0 exec \"\"import state; print\\(\\\\\"\"manual_mode:\\\\\"\", state.manual_mode\\); print\\(\\\\\"\"relays:\\\\\"\", state.manual_relays\\)\"\"''\")",
+      "Bash(ssh mad@100.107.220.5 \"bash -lc ''mpremote connect /dev/ttyUSB0 exec \"\"import state; print\\(state.manual_mode, state.relay_states\\)\"\"''\")",
+      "Bash(python3 -c \"import sys,json; d=json.loads\\(sys.stdin.read\\(\\).strip\\(\\)\\); print\\(''''manual_mode:'''', d[''''manual_mode'''']\\); print\\(''''relays.C2:'''', d[''''relays''''][''''C2'''']\\); print\\(''''c2_on:'''', d[''''c2_on'''']\\); print\\(''''manual_relays.C2:'''', d[''''manual_relays''''][''''C2'''']\\)\")",
+      "Bash(scp /tmp/test_mcp.py mad@100.107.220.5:/tmp/test_mcp.py)",
+      "Bash(ssh mad@100.107.220.5 \"bash -lc ''mpremote connect /dev/ttyUSB0 cp /tmp/test_mcp.py :test_mcp.py''\")",
+      "Bash(ssh mad@100.107.220.5 \"bash -lc ''mpremote connect /dev/ttyUSB0 run test_mcp.py''\")",
+      "Bash(ssh mad@100.107.220.5 \"bash -lc ''mpremote connect /dev/ttyUSB0 exec \"\"import test_mcp\"\"''\")",
+      "Bash(scp /tmp/test_outputs.py mad@100.107.220.5:/tmp/test_outputs.py)",
+      "Bash(ssh mad@100.107.220.5 \"bash -lc ''mpremote connect /dev/ttyUSB0 cp /tmp/test_outputs.py :test_outputs.py''\")",
+      "Bash(ssh mad@100.107.220.5 \"bash -lc ''mpremote connect /dev/ttyUSB0 exec \"\"import test_outputs\"\"''\")",
+      "WebFetch(domain:www.industrialshields.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.industrialshields.com)",
+      "Bash(gh api:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:wiki.industrialshields.com)",
+      "WebFetch(domain:www.hackster.io)",
+      "WebFetch(domain:webcache.googleusercontent.com)",
+      "WebFetch(domain:community.platformio.org)",
+      "WebFetch(domain:forum.arduino.cc)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
+    ]
+  }
+}
