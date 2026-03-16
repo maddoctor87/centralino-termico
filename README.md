@@ -5,7 +5,7 @@ Questo repository contiene il firmware MicroPython per la **centralina termica**
 ## Stato attuale
 - Logica di controllo **C1/C2/CR** (pompe) in sviluppo.
 - Sensori DS18B20 su bus 1-Wire gestito via DS2482 (I2C).
-- Uscite relè su PCA9685 (Q0.x) + PWM su TX2.
+- Uscite relè su PCA9685 (Q0.x) + PWM C1 su Q0.5 / A0.5 tramite PCA9685 ch13.
 - MQTT: esiste un modulo base (`comms_mqtt.py`) con topic placeholder (`centralina/state`, `centralina/cmd`).
 
 ## Integrazione MQTT / Server "Itineris"
