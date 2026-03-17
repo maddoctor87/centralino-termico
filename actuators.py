@@ -1,9 +1,11 @@
 # --- actuators.py ---
 # Attuatori PLC 21:
-# - 5 uscite digitali Q0.0-Q0.4 via driver I2C interno al progetto
+# - 5 uscite digitali Q0.0-Q0.4 via PCA9685 @ 0x40
 # - 1 uscita PWM su Q0.5 del PLC 21 per pompa C1 Wilo
 #   (richiede switch B1 = ON)
 # Le logiche di comando restano nei moduli control_*.
+
+from micropython import const
 
 import config
 import state
@@ -16,25 +18,35 @@ import state
 # Full OFF: ON=0, OFF_H bit4=1
 # PWM 12-bit: ON=0, OFF = 0..4095
 
-_PCA_MODE1    = const(0x00)
+_PCA_MODE1 = const(0x00)
 _PCA_PRE_SCALE = const(0xFE)
 _PCA_LED0_BASE = const(0x06)
-_PCA_FULL_ON  = const(0x10)   # bit4 in ON_H
-_PCA_FULL_OFF = const(0x10)   # bit4 in OFF_H
-_PCA_SLEEP    = const(0x10)   # bit4 in MODE1
+_PCA_FULL_ON = const(0x10)   # bit4 in ON_H
+_PCA_FULL_OFF = const(0x10)  # bit4 in OFF_H
+_PCA_SLEEP = const(0x10)     # bit4 in MODE1
 
 
 class PCA9685:
     def __init__(self, i2c, addr, freq_hz=1000):
         self._i2c = i2c
         self._addr = addr
-        self._buf = bytearray(5)
         # wake up (clear SLEEP bit)
         self._write_reg(_PCA_MODE1, 0x00)
         self._set_freq(freq_hz)
 
     def _write_reg(self, reg, val):
-        self._i2c.writeto(self._addr, bytes([reg, val]))
+        self._i2c.writeto_mem(self._addr, reg, bytes([val & 0xFF]))
+
+    def _read_reg(self, reg):
+        return self._i2c.readfrom_mem(self._addr, reg, 1)[0]
+
+    def _write4(self, base, b0, b1, b2, b3):
+        # Scrittura robusta verificata sul banco:
+        # il bulk writeto(addr, [reg, ...]) sul tuo stack non è affidabile.
+        self._i2c.writeto_mem(self._addr, base + 0, bytes([b0 & 0xFF]))
+        self._i2c.writeto_mem(self._addr, base + 1, bytes([b1 & 0xFF]))
+        self._i2c.writeto_mem(self._addr, base + 2, bytes([b2 & 0xFF]))
+        self._i2c.writeto_mem(self._addr, base + 3, bytes([b3 & 0xFF]))
 
     def _set_freq(self, freq_hz):
         # prescale = round(25 MHz / (4096 * freq)) - 1
@@ -44,31 +56,35 @@ class PCA9685:
         self._write_reg(_PCA_PRE_SCALE, prescale)
         self._write_reg(_PCA_MODE1, mode1 & 0x7F)
 
-    def _read_reg(self, reg):
-        self._i2c.writeto(self._addr, bytes([reg]))
-        buf = bytearray(1)
-        self._i2c.readfrom_into(self._addr, buf)
-        return buf[0]
-
     def set_digital(self, ch, value):
         """Uscita digitale: full ON o full OFF."""
-        base = _PCA_LED0_BASE + 4 * ch
+        base = _PCA_LED0_BASE + 4 * int(ch)
         if value:
-            data = bytes([base, 0x00, _PCA_FULL_ON, 0x00, 0x00])
+            # FULL ON
+            self._write4(base, 0x00, _PCA_FULL_ON, 0x00, 0x00)
         else:
-            data = bytes([base, 0x00, 0x00, 0x00, _PCA_FULL_OFF])
-        self._i2c.writeto(self._addr, data)
+            # FULL OFF
+            self._write4(base, 0x00, 0x00, 0x00, _PCA_FULL_OFF)
 
     def set_pwm(self, ch, duty_4096):
-        """Uscita PWM 0-4095 (12-bit). 0 = 0 V, 4095 = 10 V."""
+        """Uscita PWM 0-4095 (12-bit)."""
         duty_4096 = max(0, min(4095, int(duty_4096)))
-        base = _PCA_LED0_BASE + 4 * ch
-        data = bytes([base, 0x00, 0x00, duty_4096 & 0xFF, (duty_4096 >> 8) & 0x0F])
-        self._i2c.writeto(self._addr, data)
+        base = _PCA_LED0_BASE + 4 * int(ch)
+        self._write4(
+            base,
+            0x00,  # ON_L
+            0x00,  # ON_H
+            duty_4096 & 0xFF,
+            (duty_4096 >> 8) & 0x0F,
+        )
 
     def all_off(self):
         for ch in range(16):
             self.set_digital(ch, False)
+
+    def dump_channel(self, ch):
+        base = _PCA_LED0_BASE + 4 * int(ch)
+        return [self._read_reg(base + i) for i in range(4)]
 
 
 # ── RelayOutput ───────────────────────────────────────────────────────────────
@@ -87,6 +103,7 @@ class RelayOutput:
 
     def set(self, value):
         value = bool(value)
+
         if not self.available:
             if not self._warned_unavailable or value:
                 if self._ch is None:
@@ -99,6 +116,7 @@ class RelayOutput:
             return
 
         self._warned_unavailable = False
+
         if value == self.state:
             return
 
@@ -109,10 +127,6 @@ class RelayOutput:
 
 
 # ── PWMOutput (C1) ───────────────────────────────────────────────────────────
-# Uscita PWM C1 su Q0.5 del PLC 21.
-# Richiede switch B1 = ON.
-# Pilotaggio verso modulo HALJIA PC817 4ch per isolamento.
-# Frequenza nominale pompa Wilo PWM2: 1000 Hz.
 
 class PWMOutput:
     def __init__(self, pca, ch):
@@ -127,8 +141,10 @@ class PWMOutput:
 
     def set_duty(self, duty_percent):
         duty_percent = max(0, min(100, int(duty_percent)))
+
         if duty_percent == self._duty:
             return
+
         self._duty = duty_percent
 
         if self._pca is not None and self._ch is not None:
@@ -149,15 +165,12 @@ class ActuatorManager:
         self.c1_pwm = None
         self.relays = {}
 
-        # Inizializza PCA9685 (per le uscite digitali Q0.x).
         try:
             self._pca = PCA9685(i2c, config.PCA9685_ADDR, config.PCA9685_FREQ)
             print('[actuators] PCA9685 ok @ 0x{:02X}'.format(config.PCA9685_ADDR))
         except Exception as e:
             print('[actuators] PCA9685 non disponibile:', e)
-        # Uscita PWM C1 su Q0.5 del PLC 21.
-        # B1 ON -> Q0.5, B1 OFF -> A0.5.
-        # In questo progetto si usa Q0.5, quindi B1 deve essere ON.
+
         self.c1_pwm = PWMOutput(self._pca, config.C1_PWM_CH)
 
         for name, ch in config.RELAY_OUTPUTS.items():

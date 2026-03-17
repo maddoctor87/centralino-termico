@@ -1,97 +1,184 @@
 # inputs.py - Digital input management with debounce
-# Handles MCP23008 and direct GPIO for reading digital inputs with debouncing
+# Supporto verificato:
+# - MCP23008 @ 0x21 per I0.0-I0.4
+# - GPIO27 -> I0.5
+# - GPIO26 -> I0.6
+#
+# NON implementa ancora I0.7-I0.12 finché il reverse engineering non è concluso.
 
 import uasyncio as asyncio
 import time
-import config
 from machine import Pin
+
+import config
+import state
+
 
 class MCP23008:
     """MCP23008 8-bit I/O expander for digital inputs."""
 
-    def __init__(self, i2c, addr=config.MCP23008_ADDR):
+    REG_IODIR = 0x00
+    REG_GPPU = 0x06
+    REG_GPIO = 0x09
+
+    def __init__(self, i2c, addr):
         self.i2c = i2c
         self.addr = addr
-        self._buf1 = bytearray(1)
-        self._buf2 = bytearray(2)
-        # Configure all pins as inputs (IODIR = 0xFF)
-        self._write_reg(0x00, 0xFF)  # IODIR
-        # Enable pull-ups (GPPU = 0xFF)
-        self._write_reg(0x06, 0xFF)  # GPPU
+        # tutti input
+        self._write_reg(self.REG_IODIR, 0xFF)
+        # pull-up interni attivi
+        self._write_reg(self.REG_GPPU, 0xFF)
 
     def _write_reg(self, reg, val):
-        self._buf2[0] = reg
-        self._buf2[1] = val
-        self.i2c.writeto(self.addr, self._buf2)
+        self.i2c.writeto_mem(self.addr, reg, bytes([val & 0xFF]))
 
     def _read_reg(self, reg):
-        self._buf1[0] = reg
-        self.i2c.writeto(self.addr, self._buf1)
-        self.i2c.readfrom_into(self.addr, self._buf1)
-        return self._buf1[0]
-
-    def read_pin(self, pin):
-        """Read single pin (0-7). Returns True if high."""
-        gpio = self._read_reg(0x09)  # GPIO
-        return bool(gpio & (1 << pin))
+        return self.i2c.readfrom_mem(self.addr, reg, 1)[0]
 
     def read_all(self):
-        """Read all pins as bitmask."""
-        return self._read_reg(0x09)  # GPIO
+        """Ritorna il byte GPIO completo."""
+        return self._read_reg(self.REG_GPIO)
+
+    def read_pin(self, pin):
+        """Ritorna True/False logico del pin MCP indicato."""
+        if pin < 0 or pin > 7:
+            raise ValueError("MCP23008 pin fuori range: {}".format(pin))
+        gpio = self.read_all()
+        return bool((gpio >> pin) & 0x01)
+
+
+class _DebouncedInput:
+    def __init__(self, name, read_cb, debounce_ms):
+        self.name = name
+        self._read_cb = read_cb
+        self.debounce_ms = debounce_ms
+
+        now = time.ticks_ms()
+        self.raw_value = bool(self._read_cb())
+        self.stable_value = self.raw_value
+        self.last_raw_value = self.raw_value
+        self.last_change_ms = now
+
+    def poll(self):
+        now = time.ticks_ms()
+        raw = bool(self._read_cb())
+
+        if raw != self.last_raw_value:
+            self.last_raw_value = raw
+            self.last_change_ms = now
+
+        if raw != self.stable_value:
+            if time.ticks_diff(now, self.last_change_ms) >= self.debounce_ms:
+                self.raw_value = raw
+                self.stable_value = raw
+                return True
+
+        self.raw_value = raw
+        return False
 
 
 class DigitalInputManager:
-    """Manages digital inputs with debouncing."""
-
     def __init__(self, i2c):
+        self.i2c = i2c
         self.mcp = None
-        # Direct GPIO pins for I0.5 and I0.6
-        self.gpio27 = Pin(27, Pin.IN, Pin.PULL_UP)  # I0.5
-        self.gpio26 = Pin(26, Pin.IN, Pin.PULL_UP)  # I0.6
-        self.values = {name: False for name in config.INPUT_PINS}
-        self._last_values = {name: False for name in config.INPUT_PINS}
-        self._debounce_times = {name: 0 for name in config.INPUT_PINS}
+        self.inputs = {}
+        self._pin_objs = {}
 
+        # GPIO diretti verificati
+        for input_name, gpio_num in config.DIRECT_INPUT_MAP.items():
+            self._pin_objs[input_name] = Pin(gpio_num, Pin.IN, Pin.PULL_UP)
+
+        # MCP verificato per I0.0-I0.4
         try:
             self.mcp = MCP23008(i2c, config.MCP23008_ADDR)
             print('[inputs] MCP23008 ok @ 0x{:02X}'.format(config.MCP23008_ADDR))
         except Exception as e:
+            self.mcp = None
             print('[inputs] MCP23008 non disponibile:', e)
 
-    def read_all(self):
-        """Read all inputs with debouncing."""
-        current_time = time.ticks_ms()
+        # Ingressi MCP verificati
+        for input_name, mcp_pin in config.MCP_INPUT_MAP.items():
+            self.inputs[input_name] = _DebouncedInput(
+                input_name,
+                lambda p=mcp_pin: self._read_mcp_pin(p),
+                config.INPUT_DEBOUNCE_MS,
+            )
 
-        for name, pin in config.INPUT_PINS.items():
-            if pin is not None:
-                try:
-                    if name == "POOL_THERMOSTAT_CALL":
-                        raw_value = self.gpio27.value() == 1  # Assuming active high
-                    elif name == "HEAT_HELP_REQUEST":
-                        raw_value = self.gpio26.value() == 1  # Assuming active high
-                    elif self.mcp is None:
-                        raw_value = False
-                    else:
-                        raw_value = self.mcp.read_pin(pin)
-                except Exception as e:
-                    print('[inputs] read {} error: {}'.format(name, e))
-                    raw_value = False
+        # Ingressi diretti verificati
+        for input_name in config.DIRECT_INPUT_MAP:
+            self.inputs[input_name] = _DebouncedInput(
+                input_name,
+                lambda n=input_name: self._read_direct_input(n),
+                config.INPUT_DEBOUNCE_MS,
+            )
 
-                # Debounce logic
-                if raw_value != self._last_values[name]:
-                    self._debounce_times[name] = current_time
-                    self._last_values[name] = raw_value
-                elif time.ticks_diff(current_time, self._debounce_times[name]) >= config.INPUT_DEBOUNCE_MS:
-                    if raw_value != self.values[name]:
-                        self.values[name] = raw_value
+        # Alias applicativi sicuri
+        for alias_name, source_name in config.INPUT_ALIASES.items():
+            if source_name in self.inputs:
+                self.inputs[alias_name] = _DebouncedInput(
+                    alias_name,
+                    lambda s=source_name: self.inputs[s].stable_value,
+                    config.INPUT_DEBOUNCE_MS,
+                )
 
-        # Update global state
-        return dict(self.values)
+        # Ingressi non ancora mappati: presenti nello stato ma sempre False
+        for unmapped_name in getattr(config, 'UNMAPPED_INPUTS', ()):
+            if unmapped_name not in self.inputs:
+                self.inputs[unmapped_name] = _DebouncedInput(
+                    unmapped_name,
+                    lambda: False,
+                    config.INPUT_DEBOUNCE_MS,
+                )
+
+        # Pubblica stato iniziale
+        self._publish_all_initial()
+
+    def _read_mcp_pin(self, pin):
+        if self.mcp is None:
+            return False
+        # ingressi isolati spesso risultano attivi-bassi con pull-up
+        return not self.mcp.read_pin(pin)
+
+    def _read_direct_input(self, input_name):
+        pin = self._pin_objs[input_name]
+        # anche i diretti li trattiamo attivi-bassi finché il cablaggio reale non dice il contrario
+        return not bool(pin.value())
+
+    def _publish_all_initial(self):
+        for name, inp in self.inputs.items():
+            state.set_input(name, inp.stable_value)
+
+    def poll(self):
+        changed = {}
+        for name, inp in self.inputs.items():
+            if name in config.INPUT_ALIASES:
+                # gli alias seguono la sorgente, non leggono direttamente
+                source_name = config.INPUT_ALIASES[name]
+                current = self.inputs[source_name].stable_value
+                if current != inp.stable_value:
+                    inp.stable_value = current
+                    inp.raw_value = current
+                    changed[name] = current
+                    state.set_input(name, current)
+                continue
+
+            if inp.poll():
+                changed[name] = inp.stable_value
+                state.set_input(name, inp.stable_value)
+
+        return changed
 
     def snapshot(self):
-        return dict(self.values)
+        return {name: inp.stable_value for name, inp in self.inputs.items()}
+
 
 async def input_task(input_mgr):
+    interval_ms = int(getattr(config, 'INPUT_POLL_INTERVAL_S', 1) * 1000)
+    if interval_ms < 20:
+        interval_ms = 20
+
     while True:
-        input_mgr.read_all()
-        await asyncio.sleep(config.INPUT_POLL_INTERVAL_S)
+        changes = input_mgr.poll()
+        for name, value in changes.items():
+            print('[input] {}={}'.format(name, int(bool(value))))
+        await asyncio.sleep_ms(interval_ms)
