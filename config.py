@@ -51,9 +51,13 @@ DO_P4_CH   =  9   # Q0.2 → Pompa 4 (piscina)
 DO_P5_CH   =  8   # Q0.3 → spare
 DO_VALVE_CH= 12   # Q0.4 → Valvola motorizzata fail-safe
 
-# Uscita analogica 0-10V per pompa Wilo C1 su Q0.5 / A0.5 via PCA9685
-# NOTA: switch B zona deve essere ON per abilitare A0.5
-C1_PWM_CH      = 13   # Q0.5/A0.5 → segnale 0-10V Wilo
+# Uscita PWM per pompa Wilo C1 su Q0.5
+# PLC 21 - zona B:
+#   B1 ON  -> Q0.5 (digitale / PWM)
+#   B1 OFF -> A0.5 (analogica 0-10V)
+# Per questo progetto usare Q0.5, quindi B1 deve essere ON.
+C1_PWM_OUTPUT = 'Q0.5'
+C1_PWM_CH = 13   # dettaglio interno implementativo, non naming hardware
 C1_PWM_FREQ_HZ = 1000
 
 # ── Relay outputs — dizionario unico, usato da actuators.py e state.py ────────

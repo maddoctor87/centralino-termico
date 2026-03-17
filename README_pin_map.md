@@ -38,12 +38,14 @@ Questo documento mostra la mappatura dei pin / morsetti usati dal firmware per l
 ---
 ## 4) Pompa PWM Wilo (C1)
 
-- **Segnale 0-10V**: A0.5 = ch 13 PCA9685 (C1_PWM_CH)
-- **Driver optoisolatore**: PC817 (4 canali) con pull-up +5V verso ingresso PWM+ della pompa.
-- **Schema tipico**: +5V → R 1k–2.2k → PWM+ (pompa). PWM- a massa.
+- **Uscita usata dal firmware**: **Q0.5**
+- **Configurazione hardware**: **switch zona B, switch 1 = ON**
+- **Nota manuale PLC 21**:
+  - B1 ON → Q0.5
+  - B1 OFF → A0.5
+- **Uso nel progetto**: comando PWM della pompa C1 / Wilo PWM2
 
-> Il firmware usa esclusivamente Q0.5 / A0.5 tramite PCA9685 ch13 per il comando PWM di C1.
-
+> Il firmware usa Q0.5 come uscita PWM. A0.5 non è usata nel progetto attuale.
 ---
 ## 5) Sensori temperatura (1-Wire)
 

@@ -151,8 +151,9 @@ class ActuatorManager:
             print('[actuators] PCA9685 ok @ 0x{:02X}'.format(config.PCA9685_ADDR))
         except Exception as e:
             print('[actuators] PCA9685 non disponibile:', e)
-
-        # Output PWM C1 solo su Q0.5 / A0.5 via PCA9685 ch13
+        # Uscita PWM C1 su Q0.5 del PLC 21.
+        # B1 ON -> Q0.5, B1 OFF -> A0.5.
+        # In questo progetto si usa Q0.5, quindi B1 deve essere ON.
         self.c1_pwm = PWMOutput(self._pca, config.C1_PWM_CH)
 
         for name, ch in config.RELAY_OUTPUTS.items():
