@@ -37,7 +37,7 @@ I2C_SDA  = 21    # GPIO21 - SDA
 I2C_SCL  = 22    # GPIO22 - SCL
 I2C_FREQ = 100_000
 
-# ── PCA9685 @ 0x40 — uscite digitali/analogiche via I2C ─────────────────────
+#   Q0.6/A0.6 → ch 6   Q0.7/A0.7 → ch 7
 # Mappatura canali verificata su manuale Rev.9, tabella equivalenze I/O:
 #   Q0.0 → ch 11   Q0.1 → ch 10   Q0.2 → ch 9    Q0.3 → ch 8
 #   Q0.4 → ch 12   Q0.5 → ch 13 (PWM, richiede switch B1 ON)
@@ -100,7 +100,7 @@ ROM_MAP = {
 
 AUTO_SCAN_ROM_ON_BOOT = False
 
-# ── Logiche C1 (pompa Wilo, PWM 0-10V) ───────────────────────────────────────
+# ── Logiche C1 (pompa Wilo PWM su Q0.5) ──────────────────────────────────────
 C1_DELTA_PWM_MIN  = 2.0    # delta minimo per avviare (°C)
 C1_DELTA_PWM_MAX  = 10.0   # delta per 100% duty (°C)
 C1_PWM_MIN        = 10     # duty minimo % quando accesa

@@ -1,7 +1,8 @@
 # --- actuators.py ---
 # Attuatori PLC 21:
-# - 5 uscite digitali Q0.0-Q0.4 via PCA9685 @ 0x40 (relè/pompe/valvola)
-# - 1 uscita analogica 0-10 V via PCA9685 @ 0x40, ch 13 (= A0.5/Q0.5) per pompa C1 Wilo
+# - 5 uscite digitali Q0.0-Q0.4 via driver I2C interno al progetto
+# - 1 uscita PWM su Q0.5 del PLC 21 per pompa C1 Wilo
+#   (richiede switch B1 = ON)
 # Le logiche di comando restano nei moduli control_*.
 
 import config
