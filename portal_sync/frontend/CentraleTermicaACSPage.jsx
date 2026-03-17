@@ -621,7 +621,7 @@ export default function CentraleTermicaACSPage() {
           <div className="card" style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div>
               <div style={{ fontWeight: 700 }}>C1 – PWM manuale</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Pilotaggio pompa pannelli via PCA9685 ch13 (Q0.5 / A0.5)</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Pilotaggio pompa pannelli su Q0.5 (switch B1 = ON)</div>
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               Duty attuale {c1Duty}% · richiesta manuale {manualPwmDuty}%

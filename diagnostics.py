@@ -102,7 +102,7 @@ def run_all_pin_tests(i2c, eth_hw_ok: bool, eth_link_ok: bool, eth_int_level: in
         _print_pin_result(
             'PWM C1',
             False,
-            'test PWM non implementato (usa C1_PWM_CH su Q0.5 / A0.5 via PCA9685)',
+            'test PWM non implementato (usa Q0.5 con switch B1 = ON)',
         )
     else:
         _print_pin_result('PWM C1', False, 'test disabilitato da config')

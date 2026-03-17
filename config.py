@@ -40,7 +40,7 @@ I2C_FREQ = 100_000
 # ── PCA9685 @ 0x40 — uscite digitali/analogiche via I2C ─────────────────────
 # Mappatura canali verificata su manuale Rev.9, tabella equivalenze I/O:
 #   Q0.0 → ch 11   Q0.1 → ch 10   Q0.2 → ch 9    Q0.3 → ch 8
-#   Q0.4 → ch 12   Q0.5/A0.5 → ch 13 (0-10V, richiede switch B ON)
+#   Q0.4 → ch 12   Q0.5 → ch 13 (PWM, richiede switch B1 ON)
 #   Q0.6/A0.6 → ch 6   Q0.7/A0.7 → ch 7
 PCA9685_ADDR = 0x40
 PCA9685_FREQ = 1000   # Hz — relay digitali

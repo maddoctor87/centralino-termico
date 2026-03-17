@@ -3,7 +3,7 @@
 Firmware MicroPython per centrale termica su Industrial Shields ESP32 PLC 21.
 
 - Sensori DS18B20 / DS18B22 tramite DS2482 su I2C.
-- Uscite relè su PCA9685 (Q0.x) + PWM C1 su Q0.5 / A0.5 tramite PCA9685 ch13.
+- Uscite su morsetti PLC Q0.x; C1 PWM su Q0.5 del PLC 21 (switch B1 = ON).
 - MQTT integrato con server esistente.
 - Logiche modulari per pannelli, ricircolo, trasferimento calore e funzioni ausiliarie.
 
@@ -22,6 +22,6 @@ Il Block 2 (logiche piscina / riscaldamento / GAS / valvola / comando PDC C2) è
 - Integrazione MQTT con server esistente
 
 ## Note
-- Il comando PWM della pompa C1 usa esclusivamente Q0.5 / A0.5 tramite PCA9685 ch13.
+- Il comando PWM della pompa C1 usa Q0.5 del PLC 21 con switch B1 = ON.
 - I segnali `POOL_THERMOSTAT_CALL` e `HEAT_HELP_REQUEST` sono già allineati nella repo corrente.
 - I segnali `PDC_WORK_C1`, `PDC_WORK_C2` e `PDC_HELP_REQUEST` sono target del futuro Block 2 e vanno mappati esplicitamente in `config.py` / `inputs.py` quando sarà implementato.

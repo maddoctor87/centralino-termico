@@ -16,7 +16,7 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
   - Se delta > soglia minima, attiva C1 con duty cycle basato su friction factor e hysteresis.
   - Override manuale, hard stop su allarmi sensori.
   - Antilegionella: Ciclo periodico per prevenire batteri (configurabile).
-- **Uscita**: C1 PWM su Q0.5 / A0.5 tramite PCA9685 ch13.
+- **Uscita**: C1 PWM su Q0.5 del PLC 21 (switch B1 = ON).
 - **Ingressi**: Temperature S1-S3.
 
 ### Block 2: Logiche piscina e riscaldamento

@@ -108,7 +108,8 @@ class RelayOutput:
 
 
 # ── PWMOutput (C1) ───────────────────────────────────────────────────────────
-# Uscita PWM C1 solo su PCA9685 ch13 (Q0.5 / A0.5).
+# Uscita PWM C1 su Q0.5 del PLC 21.
+# Richiede switch B1 = ON.
 
 class PWMOutput:
     def __init__(self, pca, ch):
