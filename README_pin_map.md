@@ -29,9 +29,11 @@ Questo documento mostra la mappatura dei pin / morsetti usati dal firmware per l
 |----------|-------------|------------|------------------|----------|
 | I0.5 | - | GPIO 27 | POOL_THERMOSTAT_CALL | Piscina thermostat call |
 | I0.6 | - | GPIO 26 | HEAT_HELP_REQUEST | Riscaldamento help request |
-| I0.0 | pin 0 | - | PDC_WORK_C1 | PDC working on C1 (placeholder) |
-| I0.1 | pin 1 | - | PDC_WORK_C2 | PDC working on C2 (placeholder) |
-| I0.7 | pin 7 | - | PDC_HELP_REQUEST | PDC help request (placeholder) |
+| I0.0 | pin 0 | - | PDC_WORK_C1 | Placeholder progettuale, da mappare in `config.py` / `inputs.py` |
+| I0.1 | pin 1 | - | PDC_WORK_C2 | Placeholder progettuale, da mappare in `config.py` / `inputs.py` |
+| I0.7 | pin 7 | - | PDC_HELP_REQUEST | Placeholder progettuale, da mappare in `config.py` / `inputs.py` |
+
+> Nota: nella repo corrente risultano già allineati e letti `POOL_THERMOSTAT_CALL` e `HEAT_HELP_REQUEST`; i tre segnali PDC sono documentati come target del futuro Block 2 ma non ancora cablati in modo esplicito nella configurazione attuale.
 
 ---
 ## 4) Pompa PWM Wilo (C1)

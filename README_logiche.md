@@ -22,7 +22,8 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 ### Block 2: Logiche piscina e riscaldamento
 - **Modulo**: `control_block2_pool_heat_pdc.py`
 - **Scopo**: Gestire richieste calore piscina/riscaldamento, coordinando GAS, valvola, PDC e pompe ausiliarie.
-- **Logica** (`Block2Controller.run_once`):
+- **Stato attuale**: previsto a progetto, ma non ancora integrato nel `main.py` della repo corrente.
+- **Logica target** (`Block2Controller.run_once`):
   - **GAS_ENABLE**: ON se PDC_HELP_REQUEST, o PDC lavora su C1 + richiesta piscina/riscaldamento, o boost dopo lavoro continuo C2 su piscina, o piscina appena riempita (placeholder).
   - **VALVE_RELAY**: ON su richiesta piscina o riscaldamento (devia flusso).
   - **PDC_CMD_START_C2**: ON se PDC libero da C1 + richiesta piscina/riscaldamento (comanda PDC a lavorare su C2).
@@ -31,7 +32,8 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
   - **Delay/Hold**: Ritardi spegnimento per stabilità (GAS_OFF_DELAY_S, VALVE_OFF_DELAY_S, PDC_C2_CMD_HOLD_S).
   - **Sicurezza**: Spegnimento su ingressi invalidi.
 - **Uscite**: GAS_ENABLE (Q0.6), VALVE_RELAY (Q0.4), PDC_CMD_START_C2 (Q0.7), HEAT_PUMP (ch0), PISCINA_PUMP (Q0.2).
-- **Ingressi**: PDC_WORK_C1/C2, PDC_HELP_REQUEST, POOL_THERMOSTAT_CALL, HEAT_HELP_REQUEST.
+- **Ingressi target**: PDC_WORK_C1/C2, PDC_HELP_REQUEST, POOL_THERMOSTAT_CALL, HEAT_HELP_REQUEST.
+- **Nota**: nella repo corrente sono già allineati `POOL_THERMOSTAT_CALL` e `HEAT_HELP_REQUEST`; i segnali PDC restano da mappare esplicitamente in `config.py` / `inputs.py`.
 
 ### Altri controlli
 - **C2 (trasferimento solare → PDC)**: `control_c2.py`
@@ -61,7 +63,8 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 - **main.py**: Boot sequenziale (Ethernet, I2C, init managers), task asincroni:
   - `sensor_task`: Lettura sensori.
   - `input_task`: Lettura ingressi.
-  - Controlli: panels, C2, CR, Block2.
+  - Controlli attuali: panels, C2, CR, aux.
+  - Controlli previsti: Block2 dopo implementazione e integrazione nel scheduler.
   - `mqtt_task`: Comunicazioni.
 - **Frequenza**: Tutto ogni 1s (CONTROL_INTERVAL_MS).
 - **Snapshot MQTT**: Include temps, relays, setpoints, allarmi, block2.
