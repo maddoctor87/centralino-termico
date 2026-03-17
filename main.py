@@ -110,7 +110,7 @@ async def main():
         asyncio.create_task(input_task(input_mgr)),
         asyncio.create_task(sensor_task(sensor_mgr)),
         asyncio.create_task(control_panels_task(sensor_mgr, _actuator_mgr)),
-        asyncio.create_task(control_c2_task(sensor_mgr, _actuator_mgr)),
+        asyncio.create_task(control_c2_task(sensor_mgr, _actuator_mgr, input_mgr)),
         asyncio.create_task(control_recirc_task(sensor_mgr, _actuator_mgr)),
         asyncio.create_task(control_aux_task(_actuator_mgr)),
     ]

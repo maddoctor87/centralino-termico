@@ -26,8 +26,13 @@ p4_on    = False
 valve_on = False
 
 # ── Comandi manuali ───────────────────────────────────────────────────────────
-manual_mode     = False
+manual_mode = False
 manual_pwm_duty = 0
+
+# ── Feedback C2 da contatto NC ────────────────────────────────────────────────
+c2_fb_alarm = False
+c2_fb_expected = None
+c2_fb_last_change_ts = 0
 
 # ── Setpoint ──────────────────────────────────────────────────────────────────
 setpoints = {key: meta['default'] for key, meta in config.SETPOINTS.items()}
@@ -47,6 +52,7 @@ alarms = {
     'ALARM_SENSORS_C2':     False,
     'ALARM_SENSORS_CR':     False,
     'ALARM_S4_INVALID':     False,
+    'ALARM_C2_FB_MISMATCH': False,
 }
 
 # ── Stato logiche ─────────────────────────────────────────────────────────────
@@ -57,10 +63,10 @@ cr_on_state          = False
 cr_emerg_mode        = False
 
 # ── Antilegionella ────────────────────────────────────────────────────────────
-antileg_request   = False
-antileg_ok        = False
-antileg_ok_ts     = None
-antileg_hold_start= None
+antileg_request    = False
+antileg_ok         = False
+antileg_ok_ts      = None
+antileg_hold_start = None
 
 # ── Snapshot ts ───────────────────────────────────────────────────────────────
 last_snapshot_ts = 0
@@ -75,8 +81,10 @@ def _sync_legacy_relays():
 
 
 def _clamp_float(value, low, high):
-    if value < low:  return low
-    if value > high: return high
+    if value < low:
+        return low
+    if value > high:
+        return high
     return value
 
 
@@ -100,7 +108,7 @@ def load_settings():
         print('[state] settings assenti, uso default')
         return False
 
-    loaded  = payload.get('setpoints', payload) if isinstance(payload, dict) else {}
+    loaded = payload.get('setpoints', payload) if isinstance(payload, dict) else {}
     changed = False
     for key in config.SETPOINTS:
         if key not in loaded:
@@ -144,6 +152,15 @@ def refresh_sensor_alarms():
     alarms['ALARM_S4_INVALID']     = temps.get('S4') is None
 
 
+def set_alarm(name, value):
+    if name in alarms:
+        alarms[name] = bool(value)
+
+
+def get_alarm(name, default=False):
+    return bool(alarms.get(name, default))
+
+
 def set_c1_duty(duty_percent):
     global c1_duty
     c1_duty = max(0, min(100, int(duty_percent)))
@@ -166,6 +183,10 @@ def set_manual_mode(enabled):
     manual_mode = bool(enabled)
 
 
+def get_manual_mode():
+    return bool(manual_mode)
+
+
 def set_manual_pwm_duty(duty_percent):
     global manual_pwm_duty
     manual_pwm_duty = max(0, min(100, int(duty_percent)))
@@ -177,26 +198,76 @@ def set_manual_relay(name, value):
     manual_relays[name] = bool(value)
 
 
+def set_c1_latch(value):
+    global c1_latched_hard_stop
+    c1_latched_hard_stop = bool(value)
+
+
+def get_c1_latch():
+    return bool(c1_latched_hard_stop)
+
+
+def set_c2_fb_alarm(value):
+    global c2_fb_alarm
+    c2_fb_alarm = bool(value)
+    alarms['ALARM_C2_FB_MISMATCH'] = bool(value)
+
+
+def get_c2_fb_alarm():
+    return bool(c2_fb_alarm)
+
+
+def set_c2_fb_expected(value):
+    global c2_fb_expected
+    c2_fb_expected = value
+
+
+def get_c2_fb_expected():
+    return c2_fb_expected
+
+
+def set_c2_fb_last_change_ts(value):
+    global c2_fb_last_change_ts
+    c2_fb_last_change_ts = int(value)
+
+
+def get_c2_fb_last_change_ts():
+    return int(c2_fb_last_change_ts)
+
+
+def get_setpoint(key, default=None):
+    return setpoints.get(key, default)
+
+
+def set_setpoint(key, value):
+    if key not in config.SETPOINTS:
+        raise KeyError(key)
+    setpoints[key] = _normalize_setpoint(key, value)
+
+
 def snapshot():
     return {
-        'ts':             time.time(),
-        'temps':          dict(temps),
-        'c1_duty':        c1_duty,
-        'c2_on':          c2_on,
-        'cr_on':          cr_on,
-        'p4_on':          p4_on,
-        'valve_on':       valve_on,
-        'relays':         dict(relay_states),
-        'relay_available':dict(relay_available),
-        'manual_mode':    manual_mode,
-        'manual_relays':  dict(manual_relays),
-        'manual_pwm_duty':manual_pwm_duty,
-        'setpoints':      dict(setpoints),
-        'setpoint_meta':  dict(setpoint_meta),
-        'alarms':         dict(alarms),
-        'c1_latch':       c1_latched_hard_stop,
-        'cr_emerg':       cr_emerg_mode,
-        'antileg_ok':     antileg_ok,
-        'antileg_ok_ts':  antileg_ok_ts,
-        'antileg_request':antileg_request,
+        'ts':                time.time(),
+        'temps':             dict(temps),
+        'c1_duty':           c1_duty,
+        'c2_on':             c2_on,
+        'cr_on':             cr_on,
+        'p4_on':             p4_on,
+        'valve_on':          valve_on,
+        'relays':            dict(relay_states),
+        'relay_available':   dict(relay_available),
+        'manual_mode':       manual_mode,
+        'manual_relays':     dict(manual_relays),
+        'manual_pwm_duty':   manual_pwm_duty,
+        'setpoints':         dict(setpoints),
+        'setpoint_meta':     dict(setpoint_meta),
+        'alarms':            dict(alarms),
+        'c1_latch':          c1_latched_hard_stop,
+        'cr_emerg':          cr_emerg_mode,
+        'antileg_ok':        antileg_ok,
+        'antileg_ok_ts':     antileg_ok_ts,
+        'antileg_request':   antileg_request,
+        'c2_fb_alarm':       c2_fb_alarm,
+        'c2_fb_expected':    c2_fb_expected,
+        'c2_fb_last_change_ts': c2_fb_last_change_ts,
     }
