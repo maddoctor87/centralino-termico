@@ -147,7 +147,7 @@ def _compute_c1_pwm2_duty(s1: float, s2: float, s3: float, s4: float, active: bo
 
     # Override anti-stagnazione
     if s1 >= config.C1_STAGNATION_TEMP and thigh >= config.C1_THIGH_STOP:
-        override_speed = max(1, min(100, int(config.C1_STAGNATION_DUTY)))
+        override_speed = max(1, min(100, int(config.C1_STAGNATION_SPEED_PCT)))
         return _wilo_pwm2_from_speed_pct(override_speed)
 
     # Richiesta base da delta termico

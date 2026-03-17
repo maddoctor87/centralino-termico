@@ -100,6 +100,8 @@ ROM_MAP = {
 AUTO_SCAN_ROM_ON_BOOT = False
 
 # ── Logiche C1 (pompa Wilo PWM su Q0.5) ──────────────────────────────────────
+C1_ON_DELTA       = 4.0    # ON se S1 >= Tavg_solare + 4
+C1_OFF_DELTA      = 2.0    # OFF se S1 <= Tavg_solare + 2
 C1_DELTA_PWM_MIN  = 2.0    # delta minimo per avviare (°C)
 C1_DELTA_PWM_MAX  = 10.0   # delta per 100% duty (°C)
 C1_PWM_MIN        = 10     # duty minimo % quando accesa
@@ -107,7 +109,7 @@ C1_PWM_MAX        = 100    # duty massimo %
 C1_THIGH_FULL     = 70.0   # S4: sotto questa temp, nessuna riduzione potenza
 C1_THIGH_STOP     = 85.0   # S4: sopra questa temp, duty scalato a 0
 C1_STAGNATION_TEMP= 130.0  # S1: anti-stagnazione pannelli
-C1_STAGNATION_DUTY= 30     # duty minimo anti-stagnazione %
+C1_STAGNATION_SPEED_PCT = 30   # richiesta velocità % in override anti-stagnazione
 C1_STOP_HARD_TEMP = 85.0   # S4 >= questo -> C1 si ferma (hard stop)
 C1_LATCH_RESET_TEMP= 70.0  # S4 <= questo -> reset latch hard stop
 
