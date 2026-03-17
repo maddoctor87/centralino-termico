@@ -111,6 +111,8 @@ class RelayOutput:
 # ── PWMOutput (C1) ───────────────────────────────────────────────────────────
 # Uscita PWM C1 su Q0.5 del PLC 21.
 # Richiede switch B1 = ON.
+# Pilotaggio verso modulo HALJIA PC817 4ch per isolamento.
+# Frequenza nominale pompa Wilo PWM2: 1000 Hz.
 
 class PWMOutput:
     def __init__(self, pca, ch):
