@@ -6,10 +6,11 @@
 # - I0.5 = GPIO27, I0.6 = GPIO26
 #
 # ATTENZIONE:
-# I0.7–I0.12 NON sono ancora mappati qui.
-# Non introdurre mapping “presunti” prima del reverse engineering completo.
+# pin_lib contiene il reverse engineering del dispatch I/O reale del PLC.
+# Questo firmware usa PLC21IO come HAL condivisa.
 
 BOARD_NAME = 'Industrial Shields ESP32 PLC 21'
+USE_PLC21_IO = True
 
 # ── Ethernet W5500 (SPI interno, pin fissi) ──────────────────────────────────
 ETH_ENABLED = True
@@ -53,7 +54,7 @@ I2C_FREQ = 100_000
 #   Q0.2 → ch  9
 #   Q0.3 → ch  8
 #   Q0.4 → ch 12
-#   Q0.5 → ch 13 (PWM, B1 ON)
+#   A0.5 → ch 13 (PWM, B1 ON)
 #   Q0.6 → ch  6
 #   Q0.7 → ch  7
 PCA9685_ADDR = 0x40
@@ -65,7 +66,7 @@ DO_P4_CH = 9
 DO_P5_CH = 8
 DO_VALVE_CH = 12
 
-C1_PWM_OUTPUT = 'Q0.5'
+C1_PWM_OUTPUT = 'A0.5'
 C1_PWM_CH = 13
 C1_PWM_FREQ_HZ = 1000
 
@@ -77,21 +78,17 @@ RELAY_OUTPUTS = {
     'VALVE': DO_VALVE_CH,
 }
 
-# ── Ingressi digitali verificati ─────────────────────────────────────────────
-# MCP23008 @ 0x21 — verificato per I0.0-I0.4
-# Encoding: addr=0x21, pin=N
-#   I0.0 → pin 6
-#   I0.1 → pin 4
-#   I0.2 → pin 5
-#   I0.3 → pin 3
-#   I0.4 → pin 2
-#
-# Diretti:
-#   I0.5 → GPIO27
-#   I0.6 → GPIO26
-#
-# NON VERIFICATI ANCORA:
-#   I0.7–I0.12
+RELAY_PLC_OUTPUTS = {
+    'C2': 'Q0.0',
+    'CR': 'Q0.1',
+    'P4': 'Q0.2',
+    'P5': 'Q0.3',
+    'VALVE': 'Q0.4',
+}
+
+# ── Ingressi applicativi del firmware ─────────────────────────────────────────
+# Il dispatch hardware reale è demandato a pin_lib/plc21_io.py.
+# Qui restano alias applicativi e compatibilità col firmware esistente.
 MCP23008_ADDR = 0x21
 
 MCP_INPUT_MAP = {
@@ -107,28 +104,21 @@ DIRECT_INPUT_MAP = {
     'I0.6': 26,
 }
 
-# Alias applicativi sicuri fin qui
+# Alias applicativi del firmware
 INPUT_ALIASES = {
     'POOL_THERMOSTAT_CALL': 'I0.5',
     'HEAT_HELP_REQUEST': 'I0.6',
 }
 
-# Lista esplicita degli ingressi NON ancora supportati
+# Placeholder applicativi non fisici
 UNMAPPED_INPUTS = (
-    'I0.7',
-    'I0.8',
-    'I0.9',
-    'I0.10',
-    'I0.11',
-    'I0.12',
     'FB_C2_NC',
 )
 
 INPUT_DEBOUNCE_MS = 50
 INPUT_POLL_INTERVAL_S = 1
 
-# Feedback relè C2:
-# placeholder mantenuto a livello config, ma NON mappare ancora a I0.12
+# Feedback relè C2 placeholder applicativo
 C2_FB_NC_NAME = 'FB_C2_NC'
 C2_FB_TIMEOUT_S = 1
 

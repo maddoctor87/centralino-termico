@@ -7,6 +7,7 @@
 
 import uasyncio as asyncio
 import time
+import sys
 from machine import I2C, Pin
 
 import config
@@ -21,6 +22,7 @@ from control_aux import control_aux_task
 from comms_mqtt import mqtt_task
 
 _actuator_mgr = None
+_plc_io = None
 _eth_spi = None
 _eth_cs = None
 _eth_int = None
@@ -85,7 +87,7 @@ async def eth_connect():
 
 
 async def main():
-    global _actuator_mgr
+    global _actuator_mgr, _plc_io
 
     print('[boot] {} skeleton'.format(config.BOARD_NAME))
     await eth_connect()
@@ -99,8 +101,15 @@ async def main():
     )
     print('[boot] I2C scan:', [hex(addr) for addr in i2c.scan()])
 
-    _actuator_mgr = ActuatorManager(i2c)
-    input_mgr = DigitalInputManager(i2c)
+    if '/pin_lib' not in sys.path:
+        sys.path.append('/pin_lib')
+    from plc21_io import PLC21IO
+
+    _plc_io = PLC21IO(i2c=i2c)
+    print('[boot] HAL:', _plc_io.model_name())
+
+    _actuator_mgr = ActuatorManager(i2c=i2c, plc_io=_plc_io)
+    input_mgr = DigitalInputManager(i2c=i2c, plc_io=_plc_io)
     sensor_mgr = SensorManager(i2c)
 
     if config.AUTO_SCAN_ROM_ON_BOOT:

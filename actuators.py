@@ -90,16 +90,18 @@ class PCA9685:
 # ── RelayOutput ───────────────────────────────────────────────────────────────
 
 class RelayOutput:
-    def __init__(self, name, pca, ch):
+    def __init__(self, name, pca, ch, plc_io=None, plc_name=None):
         self.name = name
         self._pca = pca
         self._ch = ch
+        self._plc_io = plc_io
+        self._plc_name = plc_name
         self.state = False
         self._warned_unavailable = False
 
     @property
     def available(self):
-        return self._pca is not None and self._ch is not None
+        return self._plc_io is not None or (self._pca is not None and self._ch is not None)
 
     def set(self, value):
         value = bool(value)
@@ -121,7 +123,10 @@ class RelayOutput:
             return
 
         self.state = value
-        self._pca.set_digital(self._ch, value)
+        if self._plc_io is not None and self._plc_name is not None:
+            self._plc_io.write_output(self._plc_name, 1 if value else 0)
+        else:
+            self._pca.set_digital(self._ch, value)
         state.set_relay_output(self.name, value)
         print('[relay] {}={}'.format(self.name, 'ON' if value else 'OFF'))
 
@@ -129,9 +134,11 @@ class RelayOutput:
 # ── PWMOutput (C1) ───────────────────────────────────────────────────────────
 
 class PWMOutput:
-    def __init__(self, pca, ch):
+    def __init__(self, pca, ch, plc_io=None, plc_name=None):
         self._pca = pca
         self._ch = ch
+        self._plc_io = plc_io
+        self._plc_name = plc_name
         self._duty = 0
         state.set_c1_duty(0)
 
@@ -147,7 +154,9 @@ class PWMOutput:
 
         self._duty = duty_percent
 
-        if self._pca is not None and self._ch is not None:
+        if self._plc_io is not None and self._plc_name is not None:
+            self._plc_io.write_output(self._plc_name, duty_percent * 4095 // 100)
+        elif self._pca is not None and self._ch is not None:
             self._pca.set_pwm(self._ch, duty_percent * 4095 // 100)
 
         state.set_c1_duty(duty_percent)
@@ -160,21 +169,25 @@ class PWMOutput:
 # ── ActuatorManager ───────────────────────────────────────────────────────────
 
 class ActuatorManager:
-    def __init__(self, i2c):
+    def __init__(self, i2c, plc_io=None):
         self._pca = None
+        self._plc_io = plc_io
         self.c1_pwm = None
         self.relays = {}
 
-        try:
-            self._pca = PCA9685(i2c, config.PCA9685_ADDR, config.PCA9685_FREQ)
-            print('[actuators] PCA9685 ok @ 0x{:02X}'.format(config.PCA9685_ADDR))
-        except Exception as e:
-            print('[actuators] PCA9685 non disponibile:', e)
+        if self._plc_io is None:
+            try:
+                self._pca = PCA9685(i2c, config.PCA9685_ADDR, config.PCA9685_FREQ)
+                print('[actuators] PCA9685 ok @ 0x{:02X}'.format(config.PCA9685_ADDR))
+            except Exception as e:
+                print('[actuators] PCA9685 non disponibile:', e)
+        else:
+            print('[actuators] usando plc_io come HAL uscite')
 
-        self.c1_pwm = PWMOutput(self._pca, config.C1_PWM_CH)
+        self.c1_pwm = PWMOutput(self._pca, config.C1_PWM_CH, plc_io=self._plc_io, plc_name=config.C1_PWM_OUTPUT)
 
         for name, ch in config.RELAY_OUTPUTS.items():
-            self.relays[name] = RelayOutput(name, self._pca, ch)
+            self.relays[name] = RelayOutput(name, self._pca, ch, plc_io=self._plc_io, plc_name=config.RELAY_PLC_OUTPUTS.get(name))
             state.set_relay_available(name, self.relays[name].available)
 
         self.all_off()
