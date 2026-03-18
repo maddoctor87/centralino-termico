@@ -30,7 +30,7 @@ class Block2Controller:
 
         # Boost after C2 working continuously
         if (inputs.get('POOL_THERMOSTAT_CALL', False) and
-            inputs.get('PDC_WORK_acr', False)):
+            inputs.get('PDC_WORK_ACR', False)):
             if self.c2_work_start is None:
                 self.c2_work_start = time.time()
             elif (time.time() - self.c2_work_start) >= config.POOL_C2_GAS_BOOST_AFTER_S:
@@ -115,7 +115,7 @@ class Block2Controller:
         # Safety: if inputs invalid, turn off
         input_valid = all(
             inputs.get(name, False) is not None
-            for name in ['PDC_WORK_ACS', 'PDC_WORK_acr', 'PDC_HELP_REQUEST',
+            for name in ['PDC_WORK_ACS', 'PDC_WORK_ACR', 'PDC_HELP_REQUEST',
                         'POOL_THERMOSTAT_CALL', 'HEAT_HELP_REQUEST']
         )
         if not input_valid:
