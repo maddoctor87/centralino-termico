@@ -27,13 +27,15 @@ Questo documento mostra la mappatura dei pin / morsetti usati dal firmware per l
 
 | Morsetto | Pin MCP23008 | GPIO ESP32 | Segnale firmware | Funzione |
 |----------|-------------|------------|------------------|----------|
-| I0.5 | - | GPIO 27 | POOL_THERMOSTAT_CALL | Piscina thermostat call |
-| I0.6 | - | GPIO 26 | HEAT_HELP_REQUEST | Riscaldamento help request |
-| I0.0 | pin 0 | - | PDC_WORK_ACS | Placeholder progettuale, da mappare in `config.py` / `inputs.py` |
-| I0.1 | pin 1 | - | PDC_WORK_ACR | Placeholder progettuale, da mappare in `config.py` / `inputs.py` |
-| I0.7 | pin 7 | - | PDC_HELP_REQUEST | Placeholder progettuale, da mappare in `config.py` / `inputs.py` |
+| I0.0 | pin 6 | - | PDC_WORK_ACS | Feedback relè NC |
+| I0.1 | pin 4 | - | PDC_HELP_REQUEST | Feedback relè NC |
+| I0.2 | pin 5 | - | HEAT_HELP_REQUEST | Feedback relè NC |
+| I0.3 | pin 3 | - | POOL_THERMOSTAT_CALL | Feedback relè NC |
+| I0.4 | pin 2 | - | PDC_WORK_ACR | Feedback relè NC di Q0.7 |
+| I0.5 | - | GPIO 27 | Spare / prototipazione | Non usato negli alias applicativi correnti |
+| I0.6 | - | GPIO 26 | Spare / prototipazione | Non usato negli alias applicativi correnti |
 
-> Nota: nella repo corrente risultano già allineati e letti `POOL_THERMOSTAT_CALL` e `HEAT_HELP_REQUEST`; i tre segnali PDC sono documentati come target del futuro Block 2 ma non ancora cablati in modo esplicito nella configurazione attuale.
+> Nota: tutti i segnali applicativi sopra sono cablati con contatti relè NC. Nel firmware vengono quindi invertiti logicamente: contatto chiuso = ingresso fisico attivo = segnale applicativo `False`; contatto aperto = ingresso fisico disattivo = segnale applicativo `True`.
 
 ---
 ## 4) Pompa PWM Wilo (C1)

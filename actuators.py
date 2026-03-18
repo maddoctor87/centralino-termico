@@ -200,6 +200,10 @@ class ActuatorManager:
     def set_c1_wilo_duty(self, wilo_duty_pct):
         self.c1_wilo_pwm.set_wilo_duty(wilo_duty_pct)
 
+    def set_c1_pwm(self, duty_pct):
+        # Compatibilità con vecchi moduli che chiamano ancora il nome pre-Wilo.
+        self.set_c1_wilo_duty(duty_pct)
+
     def all_off(self):
         self.c1_wilo_pwm.off()
         for relay in self.relays.values():

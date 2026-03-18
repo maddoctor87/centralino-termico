@@ -25,6 +25,5 @@ Il flag MQTT `pool_just_filled` / "piscina appena riempita" puo essere ricevuto 
 
 ## Note
 - Il comando C1 usa un duty Wilo PWM2 invertito su Q0.5 del PLC 21 con switch B1 = ON.
-- I segnali `POOL_THERMOSTAT_CALL` e `HEAT_HELP_REQUEST` sono già allineati nella repo corrente.
-- I segnali `PDC_WORK_ACS`, `PDC_WORK_ACR` e `PDC_HELP_REQUEST` sono target del futuro Block 2 e vanno mappati esplicitamente in `config.py` / `inputs.py` quando sarà implementato.
+- Gli ingressi applicativi `PDC_WORK_ACS`, `PDC_WORK_ACR`, `PDC_HELP_REQUEST`, `HEAT_HELP_REQUEST` e `POOL_THERMOSTAT_CALL` sono mappati in `config.py` su contatti relè NC, quindi sono invertiti logicamente rispetto al livello fisico letto dal PLC.
 - Il comando MQTT per la piscina appena riempita è `{"pool_just_filled": true|false}` su `centralina/cmd`.

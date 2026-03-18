@@ -51,7 +51,7 @@ class DigitalInputManager:
             if source_name in self.inputs:
                 self.inputs[alias_name] = _DebouncedInput(
                     alias_name,
-                    lambda s=source_name: self.inputs[s].stable_value,
+                    lambda a=alias_name, s=source_name: self._alias_value(a, self.inputs[s].stable_value),
                     config.INPUT_DEBOUNCE_MS,
                 )
 
@@ -89,12 +89,18 @@ class DigitalInputManager:
         for name, inp in self.inputs.items():
             state.set_input(name, inp.stable_value)
 
+    def _alias_value(self, alias_name, source_value):
+        value = bool(source_value)
+        if alias_name in getattr(config, 'INPUT_INVERTED', ()):
+            return not value
+        return value
+
     def poll(self):
         changed = {}
         for name, inp in self.inputs.items():
             if name in config.INPUT_ALIASES:
                 source_name = config.INPUT_ALIASES[name]
-                current = self.inputs[source_name].stable_value
+                current = self._alias_value(name, self.inputs[source_name].stable_value)
                 if current != inp.stable_value:
                     inp.stable_value = current
                     inp.raw_value = current

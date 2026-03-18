@@ -33,7 +33,7 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
   - **Sicurezza**: Spegnimento su ingressi invalidi.
 - **Uscite**: C2 (Q0.0), PISCINA_PUMP (Q0.1), HEAT_PUMP (Q0.2), CR (Q0.3), VALVE (Q0.4), GAS_ENABLE (Q0.6), PDC_CMD_START_ACR (Q0.7).
 - **Ingressi target**: PDC_WORK_ACS/C2, PDC_HELP_REQUEST, POOL_THERMOSTAT_CALL, HEAT_HELP_REQUEST.
-- **Nota**: nella repo corrente sono già allineati `POOL_THERMOSTAT_CALL` e `HEAT_HELP_REQUEST`; i segnali PDC restano da mappare esplicitamente in `config.py` / `inputs.py`.
+- **Nota**: nella repo corrente gli ingressi `PDC_WORK_ACS`, `PDC_WORK_ACR`, `PDC_HELP_REQUEST`, `POOL_THERMOSTAT_CALL` e `HEAT_HELP_REQUEST` sono mappati in `config.py`; essendo contatti relè NC, vengono invertiti logicamente nel layer `inputs.py`.
 - **Flag MQTT predisposto**: `pool_just_filled` puo essere comandato via MQTT/API e viene pubblicato nello snapshot stato, ma finche `control_block2_pool_heat_pdc.py` non viene avviato da `main.py` non cambia nessuna uscita reale.
 
 ### Altri controlli

@@ -112,9 +112,24 @@ DIRECT_INPUT_MAP = {
 
 # Alias applicativi del firmware
 INPUT_ALIASES = {
-    'POOL_THERMOSTAT_CALL': 'I0.5',
-    'HEAT_HELP_REQUEST': 'I0.6',
+    'PDC_WORK_ACS': 'I0.0',
+    'PDC_HELP_REQUEST': 'I0.1',
+    'HEAT_HELP_REQUEST': 'I0.2',
+    'POOL_THERMOSTAT_CALL': 'I0.3',
+    'PDC_WORK_ACR': 'I0.4',
 }
+
+# Contatti da relè NC:
+# - relè a riposo -> contatto chiuso -> ingresso fisico True
+# - relè attivo   -> contatto aperto -> ingresso fisico False
+# Gli alias applicativi sotto vengono quindi invertiti rispetto al valore fisico.
+INPUT_INVERTED = (
+    'PDC_WORK_ACS',
+    'PDC_HELP_REQUEST',
+    'HEAT_HELP_REQUEST',
+    'POOL_THERMOSTAT_CALL',
+    'PDC_WORK_ACR',
+)
 
 # Placeholder applicativi non fisici
 UNMAPPED_INPUTS = (
