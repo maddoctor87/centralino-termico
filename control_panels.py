@@ -51,6 +51,22 @@ def _get_c1_latch() -> bool:
     return bool(getattr(state, "c1_latch", False))
 
 
+def _set_c1_active(value: bool) -> None:
+    fn = getattr(state, "set_c1_active", None)
+    if callable(fn):
+        fn(bool(value))
+    else:
+        setattr(state, "c1_active", bool(value))
+        setattr(state, "c1_on_state", bool(value))
+
+
+def _get_c1_active() -> bool:
+    fn = getattr(state, "get_c1_active", None)
+    if callable(fn):
+        return bool(fn())
+    return bool(getattr(state, "c1_active", getattr(state, "c1_on_state", False)))
+
+
 def _manual_mode_active() -> bool:
     fn = getattr(state, "get_manual_mode", None)
     if callable(fn):
@@ -116,7 +132,7 @@ def _speed_pct_from_delta(delta_c: float) -> int:
     return speed_pct
 
 
-def _speed_pct_to_wilo_duty_pct(speed_pct: int) -> int:
+def speed_pct_to_wilo_duty_pct(speed_pct: int) -> int:
     """
     Converte una richiesta velocità "umana" 0..100 nel duty PWM2 Wilo.
     Regola usata:
@@ -124,11 +140,56 @@ def _speed_pct_to_wilo_duty_pct(speed_pct: int) -> int:
     - 1-100% -> 85..5% (min..max)
     """
     if speed_pct <= 0:
-        return 95
+        return config.C1_WILO_STANDBY_DUTY_PCT
 
     speed_pct = max(1, min(100, int(speed_pct)))
-    wilo_duty_pct = _map_linear(speed_pct, 1, 100, 85, 5)
-    return int(round(max(5, min(85, wilo_duty_pct))))
+    wilo_duty_pct = _map_linear(
+        speed_pct,
+        1,
+        100,
+        config.C1_WILO_MIN_WORK_DUTY_PCT,
+        config.C1_WILO_MAX_SPEED_DUTY_PCT,
+    )
+    return int(
+        round(
+            max(
+                config.C1_WILO_MAX_SPEED_DUTY_PCT,
+                min(config.C1_WILO_MIN_WORK_DUTY_PCT, wilo_duty_pct),
+            )
+        )
+    )
+
+
+def _speed_pct_to_wilo_duty_pct(speed_pct: int) -> int:
+    return speed_pct_to_wilo_duty_pct(speed_pct)
+
+
+def validate_c1_wilo_pwm2_mapping():
+    samples = {
+        0: speed_pct_to_wilo_duty_pct(0),
+        1: speed_pct_to_wilo_duty_pct(1),
+        50: speed_pct_to_wilo_duty_pct(50),
+        100: speed_pct_to_wilo_duty_pct(100),
+    }
+    active_values = [speed_pct_to_wilo_duty_pct(speed_pct) for speed_pct in (1, 25, 50, 75, 100)]
+
+    if samples[0] != config.C1_WILO_STANDBY_DUTY_PCT:
+        raise AssertionError('0% must map to standby {}'.format(config.C1_WILO_STANDBY_DUTY_PCT))
+    if samples[1] != config.C1_WILO_MIN_WORK_DUTY_PCT:
+        raise AssertionError('1% must map to {}'.format(config.C1_WILO_MIN_WORK_DUTY_PCT))
+    if samples[100] != config.C1_WILO_MAX_SPEED_DUTY_PCT:
+        raise AssertionError('100% must map to {}'.format(config.C1_WILO_MAX_SPEED_DUTY_PCT))
+    if any(
+        value < config.C1_WILO_MAX_SPEED_DUTY_PCT or value > config.C1_WILO_MIN_WORK_DUTY_PCT
+        for value in active_values
+    ):
+        raise AssertionError('active branch generated out-of-range Wilo duty values')
+    if any(active_values[idx] < active_values[idx + 1] for idx in range(len(active_values) - 1)):
+        raise AssertionError('active branch is not inverted')
+    if speed_pct_to_wilo_duty_pct(-10) != config.C1_WILO_STANDBY_DUTY_PCT:
+        raise AssertionError('negative speed must map to standby')
+
+    return samples
 
 
 def _compute_c1_wilo_duty_pct(s1: float, s2: float, s3: float, s4: float, active: bool) -> int:
@@ -143,12 +204,12 @@ def _compute_c1_wilo_duty_pct(s1: float, s2: float, s3: float, s4: float, active
 
     # Se non attiva per isteresi, pompa ferma
     if not active:
-        return 95
+        return config.C1_WILO_STANDBY_DUTY_PCT
 
     # Override anti-stagnazione
     if s1 >= config.C1_STAGNATION_TEMP and thigh >= config.C1_THIGH_STOP:
         override_speed = max(1, min(100, int(config.C1_STAGNATION_SPEED_PCT)))
-        return _speed_pct_to_wilo_duty_pct(override_speed)
+        return speed_pct_to_wilo_duty_pct(override_speed)
 
     # Richiesta base da delta termico
     speed_pct = _speed_pct_from_delta(delta)
@@ -159,9 +220,9 @@ def _compute_c1_wilo_duty_pct(s1: float, s2: float, s3: float, s4: float, active
 
     # Se il freno porta a zero, stop
     if speed_pct <= 0:
-        return 95
+        return config.C1_WILO_STANDBY_DUTY_PCT
 
-    return _speed_pct_to_wilo_duty_pct(speed_pct)
+    return speed_pct_to_wilo_duty_pct(speed_pct)
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +251,8 @@ def run_once(sensor_mgr, actuator_mgr):
 
     # Se sensori critici mancanti, fermo C1
     if not panels_ok or not s4_ok:
-        actuator_mgr.set_c1_wilo_duty(95)
+        actuator_mgr.set_c1_wilo_duty(config.C1_WILO_STANDBY_DUTY_PCT)
+        _set_c1_active(False)
         return
 
     tavg = (s2 + s3) / 2.0
@@ -201,7 +263,7 @@ def run_once(sensor_mgr, actuator_mgr):
     c1_on_delta = getattr(config, "C1_ON_DELTA", 4.0)
     c1_off_delta = getattr(config, "C1_OFF_DELTA", 2.0)
 
-    active = bool(getattr(state, "c1_active", False))
+    active = _get_c1_active()
 
     # Hard stop latch su S4
     latched = _get_c1_latch()
@@ -214,8 +276,8 @@ def run_once(sensor_mgr, actuator_mgr):
             latched = False
             _set_c1_latch(False)
         else:
-            actuator_mgr.set_c1_wilo_duty(95)
-            setattr(state, "c1_active", False)
+            actuator_mgr.set_c1_wilo_duty(config.C1_WILO_STANDBY_DUTY_PCT)
+            _set_c1_active(False)
             return
 
     if not active and delta >= c1_on_delta:
@@ -226,7 +288,7 @@ def run_once(sensor_mgr, actuator_mgr):
     wilo_duty_pct = _compute_c1_wilo_duty_pct(s1, s2, s3, s4, active)
 
     actuator_mgr.set_c1_wilo_duty(wilo_duty_pct)
-    setattr(state, "c1_active", active)
+    _set_c1_active(active)
 
     # opzionale: debug leggibile
     print(
@@ -244,9 +306,10 @@ async def control_panels_task(sensor_mgr, actuator_mgr):
         try:
             run_once(sensor_mgr, actuator_mgr)
         except Exception as e:
-            print("[panels] error:", e)
+            print("[panels] error: {} -> forcing C1 standby".format(e))
             try:
-                actuator_mgr.set_c1_wilo_duty(95)
+                actuator_mgr.set_c1_wilo_duty(config.C1_WILO_STANDBY_DUTY_PCT)
+                _set_c1_active(False)
             except Exception:
                 pass
         await asyncio.sleep(config.CONTROL_INTERVAL_S)

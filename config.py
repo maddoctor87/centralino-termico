@@ -168,6 +168,9 @@ AUTO_SCAN_ROM_ON_BOOT = False
 # ── Logiche C1 ────────────────────────────────────────────────────────────────
 # speed_pct = richiesta velocità umana 0..100
 # wilo_duty_pct = duty finale PWM2 Wilo invertito
+C1_WILO_MAX_SPEED_DUTY_PCT = 5
+C1_WILO_MIN_WORK_DUTY_PCT = 85
+C1_WILO_STANDBY_DUTY_PCT = 95
 C1_DELTA_PWM_MIN = 2.0
 C1_DELTA_PWM_MAX = 10.0
 C1_SPEED_PCT_MIN = 10
@@ -242,7 +245,7 @@ SNAPSHOT_INTERVAL_S = 5
 
 # ── Safe state ────────────────────────────────────────────────────────────────
 SAFE_RELAY_STATE = False
-SAFE_PWM_DUTY = 0
+SAFE_PWM_DUTY = C1_WILO_STANDBY_DUTY_PCT
 
 # ── Boot diagnostics ──────────────────────────────────────────────────────────
 BOOT_TEST_OUTPUTS = False

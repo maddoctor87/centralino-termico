@@ -31,7 +31,7 @@ for name in getattr(config, 'UNMAPPED_INPUTS', ()):
 
 
 # ── Stato attuatori ───────────────────────────────────────────────────────────
-c1_wilo_duty_pct = 0
+c1_wilo_duty_pct = config.C1_WILO_STANDBY_DUTY_PCT
 relay_states = {name: False for name in config.RELAY_OUTPUTS}
 relay_available = {name: False for name in config.RELAY_OUTPUTS}
 manual_relays = {name: False for name in config.RELAY_OUTPUTS}
@@ -49,7 +49,7 @@ pdc_cmd_start_acr_on = False
 
 # ── Comandi manuali ───────────────────────────────────────────────────────────
 manual_mode = False
-manual_c1_wilo_duty_pct = 0
+manual_c1_wilo_duty_pct = config.C1_WILO_STANDBY_DUTY_PCT
 pool_just_filled = bool(getattr(config, 'POOL_JUST_FILLED', False))
 
 # ── Setpoint ──────────────────────────────────────────────────────────────────
@@ -75,6 +75,7 @@ alarms = {
 
 # ── Stato logiche ─────────────────────────────────────────────────────────────
 c1_on_state = False
+c1_active = False
 c1_latched_hard_stop = False
 c2_on_state = False
 cr_on_state = False
@@ -256,6 +257,25 @@ def set_c1_wilo_duty_pct(wilo_duty_pct):
     c1_wilo_duty_pct = max(0, min(100, int(wilo_duty_pct)))
 
 
+def set_c1_active(value):
+    global c1_active, c1_on_state
+    c1_active = bool(value)
+    c1_on_state = c1_active
+
+
+def get_c1_active():
+    return bool(c1_active)
+
+
+def set_c1_latch(value):
+    global c1_latched_hard_stop
+    c1_latched_hard_stop = bool(value)
+
+
+def get_c1_latch():
+    return bool(c1_latched_hard_stop)
+
+
 def set_relay_output(name, value):
     if name not in relay_states:
         return
@@ -271,6 +291,10 @@ def set_relay_available(name, value):
 def set_manual_mode(enabled):
     global manual_mode
     manual_mode = bool(enabled)
+
+
+def get_manual_mode():
+    return bool(manual_mode)
 
 
 def set_manual_c1_wilo_duty_pct(wilo_duty_pct):
@@ -301,6 +325,10 @@ def set_block2_outputs(values):
             block2_outputs[key] = bool(values[key])
 
 
+def get_setpoint(name, default=None):
+    return setpoints.get(name, default)
+
+
 # ── Snapshot ──────────────────────────────────────────────────────────────────
 
 def snapshot():
@@ -309,6 +337,7 @@ def snapshot():
         'temps': dict(temps),
         'inputs': dict(inputs),
         'c1_wilo_duty_pct': c1_wilo_duty_pct,
+        'c1_active': c1_active,
         'c2_on': c2_on,
         'cr_on': cr_on,
         'p4_on': p4_on,
