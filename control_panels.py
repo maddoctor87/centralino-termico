@@ -13,8 +13,8 @@
 # - Override anti-stagnazione se S1 >= C1_STAGNATION_TEMP e Thigh >= C1_THIGH_STOP
 #
 # PWM2 Wilo:
-# - duty basso  => velocità alta
-# - duty alto   => velocità bassa / standby
+# - wilo_duty_pct basso => velocità alta
+# - wilo_duty_pct alto  => velocità bassa / standby
 # - qui usiamo:
 #     5%   = max speed
 #     85%  = min working speed
@@ -104,19 +104,19 @@ def _brake_factor(thigh: float) -> float:
 def _speed_pct_from_delta(delta_c: float) -> int:
     """
     Mappa il delta termico in una "richiesta velocità" classica 0..100.
-    Poi questa verrà convertita in duty PWM2 Wilo.
+    Poi questa verrà convertita nel wilo_duty_pct PWM2 invertito.
     """
-    pwm_min = _get_setpoint("c1_pwm_min", config.C1_PWM_MIN)
-    pwm_max = _get_setpoint("c1_pwm_max", config.C1_PWM_MAX)
+    speed_pct_min = _get_setpoint("c1_speed_pct_min", config.C1_SPEED_PCT_MIN)
+    speed_pct_max = _get_setpoint("c1_speed_pct_max", config.C1_SPEED_PCT_MAX)
     delta_min = _get_setpoint("delta_pwm_min", config.C1_DELTA_PWM_MIN)
     delta_max = _get_setpoint("delta_pwm_max", config.C1_DELTA_PWM_MAX)
 
-    speed_pct = _map_linear(delta_c, delta_min, delta_max, pwm_min, pwm_max)
+    speed_pct = _map_linear(delta_c, delta_min, delta_max, speed_pct_min, speed_pct_max)
     speed_pct = max(0, min(100, int(round(speed_pct))))
     return speed_pct
 
 
-def _wilo_pwm2_from_speed_pct(speed_pct: int) -> int:
+def _speed_pct_to_wilo_duty_pct(speed_pct: int) -> int:
     """
     Converte una richiesta velocità "umana" 0..100 nel duty PWM2 Wilo.
     Regola usata:
@@ -127,13 +127,13 @@ def _wilo_pwm2_from_speed_pct(speed_pct: int) -> int:
         return 95
 
     speed_pct = max(1, min(100, int(speed_pct)))
-    duty = _map_linear(speed_pct, 1, 100, 85, 5)
-    return int(round(max(5, min(85, duty))))
+    wilo_duty_pct = _map_linear(speed_pct, 1, 100, 85, 5)
+    return int(round(max(5, min(85, wilo_duty_pct))))
 
 
-def _compute_c1_pwm2_duty(s1: float, s2: float, s3: float, s4: float, active: bool) -> int:
+def _compute_c1_wilo_duty_pct(s1: float, s2: float, s3: float, s4: float, active: bool) -> int:
     """
-    Restituisce il duty PWM2 finale per la pompa C1.
+    Restituisce il wilo_duty_pct PWM2 finale per la pompa C1.
     95 = stop / standby
     5..85 = modulazione valida Wilo PWM2
     """
@@ -148,7 +148,7 @@ def _compute_c1_pwm2_duty(s1: float, s2: float, s3: float, s4: float, active: bo
     # Override anti-stagnazione
     if s1 >= config.C1_STAGNATION_TEMP and thigh >= config.C1_THIGH_STOP:
         override_speed = max(1, min(100, int(config.C1_STAGNATION_SPEED_PCT)))
-        return _wilo_pwm2_from_speed_pct(override_speed)
+        return _speed_pct_to_wilo_duty_pct(override_speed)
 
     # Richiesta base da delta termico
     speed_pct = _speed_pct_from_delta(delta)
@@ -161,7 +161,7 @@ def _compute_c1_pwm2_duty(s1: float, s2: float, s3: float, s4: float, active: bo
     if speed_pct <= 0:
         return 95
 
-    return _wilo_pwm2_from_speed_pct(speed_pct)
+    return _speed_pct_to_wilo_duty_pct(speed_pct)
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +190,7 @@ def run_once(sensor_mgr, actuator_mgr):
 
     # Se sensori critici mancanti, fermo C1
     if not panels_ok or not s4_ok:
-        actuator_mgr.set_c1_pwm(95)
+        actuator_mgr.set_c1_wilo_duty(95)
         return
 
     tavg = (s2 + s3) / 2.0
@@ -214,7 +214,7 @@ def run_once(sensor_mgr, actuator_mgr):
             latched = False
             _set_c1_latch(False)
         else:
-            actuator_mgr.set_c1_pwm(95)
+            actuator_mgr.set_c1_wilo_duty(95)
             setattr(state, "c1_active", False)
             return
 
@@ -223,9 +223,9 @@ def run_once(sensor_mgr, actuator_mgr):
     elif active and delta <= c1_off_delta:
         active = False
 
-    duty = _compute_c1_pwm2_duty(s1, s2, s3, s4, active)
+    wilo_duty_pct = _compute_c1_wilo_duty_pct(s1, s2, s3, s4, active)
 
-    actuator_mgr.set_c1_pwm(duty)
+    actuator_mgr.set_c1_wilo_duty(wilo_duty_pct)
     setattr(state, "c1_active", active)
 
     # opzionale: debug leggibile
@@ -233,8 +233,8 @@ def run_once(sensor_mgr, actuator_mgr):
         "[panels] "
         "S1={:.1f} S2={:.1f} S3={:.1f} S4={:.1f} "
         "Tavg={:.1f} Thigh={:.1f} Delta={:.1f} "
-        "active={} duty={}%".format(
-            s1, s2, s3, s4, tavg, thigh, delta, active, duty
+        "active={} wilo_duty_pct={}%".format(
+            s1, s2, s3, s4, tavg, thigh, delta, active, wilo_duty_pct
         )
     )
 
@@ -246,7 +246,7 @@ async def control_panels_task(sensor_mgr, actuator_mgr):
         except Exception as e:
             print("[panels] error:", e)
             try:
-                actuator_mgr.set_c1_pwm(95)
+                actuator_mgr.set_c1_wilo_duty(95)
             except Exception:
                 pass
         await asyncio.sleep(config.CONTROL_INTERVAL_S)

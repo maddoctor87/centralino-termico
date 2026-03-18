@@ -99,11 +99,11 @@ def run_all_pin_tests(i2c, eth_hw_ok: bool, eth_link_ok: bool, eth_int_level: in
 
     if getattr(config, 'BOOT_TEST_PWM', False):
         _print_pin_result(
-            'PWM C1',
+            'C1 Wilo PWM2',
             True if pca_ok else False,
             'usa PCA9685 ch{} (solo lettura/config)'.format(config.C1_PWM_CH),
         )
     else:
-        _print_pin_result('PWM C1', False, 'test disabilitato da config')
+        _print_pin_result('C1 Wilo PWM2', False, 'test disabilitato da config')
 
     print('[diag] ===== fine test pin =====')

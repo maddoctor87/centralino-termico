@@ -59,8 +59,8 @@ def _on_cmd(topic, msg):
 
         pwm_cmd = d.get('pwm')
         if isinstance(pwm_cmd, dict) and 'duty' in pwm_cmd:
-            state.set_manual_pwm_duty(pwm_cmd['duty'])
-            print('[mqtt] pwm duty -> {}'.format(state.manual_pwm_duty))
+            state.set_manual_c1_wilo_duty_pct(pwm_cmd['duty'])
+            print('[mqtt] c1 wilo duty cmd -> {}'.format(state.manual_c1_wilo_duty_pct))
 
         setpoint_cmd = d.get('setpoint')
         if isinstance(setpoint_cmd, dict):
@@ -79,8 +79,10 @@ def _on_cmd(topic, msg):
             mapping = {
                 'delta_pwm_min': 'C1_DELTA_PWM_MIN',
                 'delta_pwm_max': 'C1_DELTA_PWM_MAX',
-                'pwm_min':       'C1_PWM_MIN',
-                'pwm_max':       'C1_PWM_MAX',
+                'speed_pct_min': 'C1_SPEED_PCT_MIN',
+                'speed_pct_max': 'C1_SPEED_PCT_MAX',
+                'pwm_min':       'C1_SPEED_PCT_MIN',
+                'pwm_max':       'C1_SPEED_PCT_MAX',
             }
             for key, cfg_name in mapping.items():
                 if key in tuning:

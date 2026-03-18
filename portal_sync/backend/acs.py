@@ -26,7 +26,7 @@ class ACSStore:
     _EMPTY: Dict[str, Any] = {
         "ts": None,
         "temps": {k: None for k in ("S1", "S2", "S3", "S4", "S5", "S6", "S7")},
-        "c1_duty": 0,
+        "c1_wilo_duty_pct": 0,
         "c2_on": False,
         "cr_on": False,
         "p4_on": False,
@@ -36,7 +36,7 @@ class ACSStore:
         "relay_available": {k: False for k in ("C2", "CR", "P4", "P5", "VALVE")},
         "manual_mode": False,
         "manual_relays": {k: False for k in ("C2", "CR", "P4", "P5", "VALVE")},
-        "manual_pwm_duty": 0,
+        "manual_c1_wilo_duty_pct": 0,
         "setpoints": {
             "solar_target_c": 55.0,
             "pdc_target_c": 50.0,

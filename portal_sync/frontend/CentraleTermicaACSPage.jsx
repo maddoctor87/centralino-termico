@@ -156,8 +156,8 @@ function SectionTitle({ children }) {
   );
 }
 
-function PWMBar({ duty }) {
-  const pct = Math.max(0, Math.min(100, duty ?? 0));
+function WiloDutyBar({ wiloDutyPct }) {
+  const pct = Math.max(0, Math.min(100, wiloDutyPct ?? 0));
   return (
     <div style={{ marginTop: 4 }}>
       <div style={{
@@ -175,7 +175,7 @@ function PWMBar({ duty }) {
         }} />
       </div>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-        Duty: {pct}%
+        Duty Wilo PWM2: {pct}%
       </div>
     </div>
   );
@@ -364,7 +364,7 @@ export default function CentraleTermicaACSPage() {
 
   useEffect(() => {
     if (!data) return;
-    setPwmDraft((prev) => (prev === '' ? String(data.manual_pwm_duty ?? data.c1_duty ?? 0) : prev));
+    setPwmDraft((prev) => (prev === '' ? String(data.manual_c1_wilo_duty_pct ?? data.c1_wilo_duty_pct ?? 0) : prev));
     setSetpointDrafts((prev) => {
       const next = { ...prev };
       let changed = false;
@@ -444,18 +444,18 @@ export default function CentraleTermicaACSPage() {
   );
 
   const sendPWM = async () => {
-    const duty = Number(pwmDraft);
-    if (!Number.isFinite(duty) || duty < 0 || duty > 100) {
-      setCmdMsg('Errore: duty PWM non valido (0-100).');
+    const wiloDutyPct = Number(pwmDraft);
+    if (!Number.isFinite(wiloDutyPct) || wiloDutyPct < 0 || wiloDutyPct > 100) {
+      setCmdMsg('Errore: duty Wilo PWM2 non valido (0-100).');
       return;
     }
     const ok = await postCommand(
       'pwm',
       '/api/acs/pwm',
-      { duty: Math.round(duty) },
-      `PWM C1 impostato a ${Math.round(duty)}%.`,
+      { duty: Math.round(wiloDutyPct) },
+      `Duty Wilo PWM2 C1 impostato a ${Math.round(wiloDutyPct)}%.`,
     );
-    if (ok) setPwmDraft(String(Math.round(duty)));
+    if (ok) setPwmDraft(String(Math.round(wiloDutyPct)));
   };
 
   const updateSetpointDraft = (key, value) => {
@@ -500,11 +500,11 @@ export default function CentraleTermicaACSPage() {
   const manualRelays = data?.manual_relays ?? {};
   const setpoints = data?.setpoints ?? {};
   const setpointMeta = data?.setpoint_meta ?? {};
-  const c1Duty = data?.c1_duty ?? 0;
+  const c1WiloDutyPct = data?.c1_wilo_duty_pct ?? 0;
   const c1Latch = data?.c1_latch ?? false;
   const crEmerg = data?.cr_emerg ?? false;
   const manualMode = data?.manual_mode ?? false;
-  const manualPwmDuty = data?.manual_pwm_duty ?? 0;
+  const manualWiloDutyPct = data?.manual_c1_wilo_duty_pct ?? 0;
   const online = data?.online ?? false;
   const antilegOk = data?.antileg_ok ?? false;
   const antilegOkTs = data?.antileg_ok_ts ?? null;
@@ -560,19 +560,19 @@ export default function CentraleTermicaACSPage() {
 
       <SectionTitle>Attuatori</SectionTitle>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
-        <ActuatorCard label="C1 – Pompa pannelli" sublabel="PWM Wilo PWM2" active={c1Duty > 0}>
+        <ActuatorCard label="C1 – Pompa pannelli" sublabel="Duty Wilo PWM2 invertito" active={c1WiloDutyPct > 0}>
           {c1Latch && (
             <div style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 700 }}>
               STOP HARD S4
             </div>
           )}
-          <div style={{ fontSize: 22, fontWeight: 700, color: c1Duty > 0 ? 'var(--ok)' : 'var(--text-muted)' }}>
-            {c1Duty}%
+          <div style={{ fontSize: 22, fontWeight: 700, color: c1WiloDutyPct > 0 ? 'var(--ok)' : 'var(--text-muted)' }}>
+            {c1WiloDutyPct}%
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            Richiesta manuale: {manualPwmDuty}%
+            Richiesta manuale: {manualWiloDutyPct}%
           </div>
-          <PWMBar duty={c1Duty} />
+          <WiloDutyBar wiloDutyPct={c1WiloDutyPct} />
         </ActuatorCard>
 
         {Object.entries(RELAY_META).map(([name, meta]) => (
@@ -620,11 +620,11 @@ export default function CentraleTermicaACSPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
           <div className="card" style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div>
-              <div style={{ fontWeight: 700 }}>C1 – PWM manuale</div>
+              <div style={{ fontWeight: 700 }}>C1 – Duty manuale Wilo PWM2</div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Pilotaggio pompa pannelli su Q0.5 (switch B1 = ON)</div>
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Duty attuale {c1Duty}% · richiesta manuale {manualPwmDuty}%
+              Duty attuale {c1WiloDutyPct}% · richiesta manuale {manualWiloDutyPct}%
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <input
@@ -650,7 +650,7 @@ export default function CentraleTermicaACSPage() {
                 disabled={!online || !manualMode || busyKey === 'pwm'}
                 onClick={sendPWM}
               >
-                {busyKey === 'pwm' ? '...' : 'Applica PWM'}
+                {busyKey === 'pwm' ? '...' : 'Applica duty'}
               </button>
               <button
                 type="button"
@@ -658,7 +658,7 @@ export default function CentraleTermicaACSPage() {
                 disabled={!online || !manualMode || busyKey === 'pwm'}
                 onClick={() => {
                   setPwmDraft('0');
-                  postCommand('pwm', '/api/acs/pwm', { duty: 0 }, 'PWM C1 disattivato.');
+                  postCommand('pwm', '/api/acs/pwm', { duty: 0 }, 'Duty Wilo PWM2 C1 disattivato.');
                 }}
               >
                 Off

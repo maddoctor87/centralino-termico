@@ -31,7 +31,7 @@ for name in getattr(config, 'UNMAPPED_INPUTS', ()):
 
 
 # ── Stato attuatori ───────────────────────────────────────────────────────────
-c1_duty = 0
+c1_wilo_duty_pct = 0
 relay_states = {name: False for name in config.RELAY_OUTPUTS}
 relay_available = {name: False for name in config.RELAY_OUTPUTS}
 manual_relays = {name: False for name in config.RELAY_OUTPUTS}
@@ -44,7 +44,7 @@ valve_on = False
 
 # ── Comandi manuali ───────────────────────────────────────────────────────────
 manual_mode = False
-manual_pwm_duty = 0
+manual_c1_wilo_duty_pct = 0
 
 # ── Setpoint ──────────────────────────────────────────────────────────────────
 setpoints = {key: meta['default'] for key, meta in config.SETPOINTS.items()}
@@ -232,9 +232,9 @@ def get_c2_fb_alarm():
 
 # ── Attuatori ─────────────────────────────────────────────────────────────────
 
-def set_c1_duty(duty_percent):
-    global c1_duty
-    c1_duty = max(0, min(100, int(duty_percent)))
+def set_c1_wilo_duty_pct(wilo_duty_pct):
+    global c1_wilo_duty_pct
+    c1_wilo_duty_pct = max(0, min(100, int(wilo_duty_pct)))
 
 
 def set_relay_output(name, value):
@@ -254,9 +254,9 @@ def set_manual_mode(enabled):
     manual_mode = bool(enabled)
 
 
-def set_manual_pwm_duty(duty_percent):
-    global manual_pwm_duty
-    manual_pwm_duty = max(0, min(100, int(duty_percent)))
+def set_manual_c1_wilo_duty_pct(wilo_duty_pct):
+    global manual_c1_wilo_duty_pct
+    manual_c1_wilo_duty_pct = max(0, min(100, int(wilo_duty_pct)))
 
 
 def set_manual_relay(name, value):
@@ -272,7 +272,7 @@ def snapshot():
         'ts': time.time(),
         'temps': dict(temps),
         'inputs': dict(inputs),
-        'c1_duty': c1_duty,
+        'c1_wilo_duty_pct': c1_wilo_duty_pct,
         'c2_on': c2_on,
         'cr_on': cr_on,
         'p4_on': p4_on,
@@ -281,7 +281,7 @@ def snapshot():
         'relay_available': dict(relay_available),
         'manual_mode': manual_mode,
         'manual_relays': dict(manual_relays),
-        'manual_pwm_duty': manual_pwm_duty,
+        'manual_c1_wilo_duty_pct': manual_c1_wilo_duty_pct,
         'setpoints': dict(setpoints),
         'setpoint_meta': dict(setpoint_meta),
         'alarms': dict(alarms),

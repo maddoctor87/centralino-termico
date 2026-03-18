@@ -58,7 +58,7 @@ I2C_FREQ = 100_000
 #   Q0.6 → ch  6
 #   Q0.7 → ch  7
 PCA9685_ADDR = 0x40
-PCA9685_FREQ = 1000
+PCA9685_FREQ = 500
 
 DO_C2_CH = 11
 DO_CR_CH = 10
@@ -68,7 +68,7 @@ DO_VALVE_CH = 12
 
 C1_PWM_OUTPUT = 'A0.5'
 C1_PWM_CH = 13
-C1_PWM_FREQ_HZ = 1000
+C1_PWM_FREQ_HZ = 500
 
 RELAY_OUTPUTS = {
     'C2': DO_C2_CH,
@@ -145,14 +145,16 @@ ROM_MAP = {
 AUTO_SCAN_ROM_ON_BOOT = False
 
 # ── Logiche C1 ────────────────────────────────────────────────────────────────
+# speed_pct = richiesta velocità umana 0..100
+# wilo_duty_pct = duty finale PWM2 Wilo invertito
 C1_DELTA_PWM_MIN = 2.0
 C1_DELTA_PWM_MAX = 10.0
-C1_PWM_MIN = 10
-C1_PWM_MAX = 100
+C1_SPEED_PCT_MIN = 10
+C1_SPEED_PCT_MAX = 100
 C1_THIGH_FULL = 70.0
 C1_THIGH_STOP = 85.0
 C1_STAGNATION_TEMP = 130.0
-C1_STAGNATION_DUTY = 30
+C1_STAGNATION_SPEED_PCT = 30
 C1_STOP_HARD_TEMP = 85.0
 C1_LATCH_RESET_TEMP = 70.0
 

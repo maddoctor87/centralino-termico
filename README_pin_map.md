@@ -43,7 +43,7 @@ Questo documento mostra la mappatura dei pin / morsetti usati dal firmware per l
 - **Nota manuale PLC 21**:
   - B1 ON → Q0.5
   - B1 OFF → A0.5
-- **Uso nel progetto**: comando PWM della pompa C1 / Wilo PWM2
+- **Uso nel progetto**: comando duty Wilo PWM2 della pompa C1
 
 > Il firmware usa Q0.5 come uscita PWM. A0.5 non è usata nel progetto attuale.
 ---

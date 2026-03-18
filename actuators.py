@@ -1,7 +1,7 @@
 # --- actuators.py ---
 # Attuatori PLC 21:
 # - 5 uscite digitali Q0.0-Q0.4 via PCA9685 @ 0x40
-# - 1 uscita PWM su Q0.5 del PLC 21 per pompa C1 Wilo
+# - 1 uscita PWM su Q0.5 del PLC 21 per pompa C1 Wilo PWM2
 #   (richiede switch B1 = ON)
 # Le logiche di comando restano nei moduli control_*.
 
@@ -131,7 +131,7 @@ class RelayOutput:
         print('[relay] {}={}'.format(self.name, 'ON' if value else 'OFF'))
 
 
-# ── PWMOutput (C1) ───────────────────────────────────────────────────────────
+# ── PWMOutput (C1 Wilo PWM2) ─────────────────────────────────────────────────
 
 class PWMOutput:
     def __init__(self, pca, ch, plc_io=None, plc_name=None):
@@ -139,31 +139,31 @@ class PWMOutput:
         self._ch = ch
         self._plc_io = plc_io
         self._plc_name = plc_name
-        self._duty = 0
-        state.set_c1_duty(0)
+        self._wilo_duty_pct = 0
+        state.set_c1_wilo_duty_pct(0)
 
     @property
-    def duty(self):
-        return self._duty
+    def wilo_duty_pct(self):
+        return self._wilo_duty_pct
 
-    def set_duty(self, duty_percent):
-        duty_percent = max(0, min(100, int(duty_percent)))
+    def set_wilo_duty(self, wilo_duty_pct):
+        wilo_duty_pct = max(0, min(100, int(wilo_duty_pct)))
 
-        if duty_percent == self._duty:
+        if wilo_duty_pct == self._wilo_duty_pct:
             return
 
-        self._duty = duty_percent
+        self._wilo_duty_pct = wilo_duty_pct
 
         if self._plc_io is not None and self._plc_name is not None:
-            self._plc_io.write_output(self._plc_name, duty_percent * 4095 // 100)
+            self._plc_io.write_output(self._plc_name, wilo_duty_pct * 4095 // 100)
         elif self._pca is not None and self._ch is not None:
-            self._pca.set_pwm(self._ch, duty_percent * 4095 // 100)
+            self._pca.set_pwm(self._ch, wilo_duty_pct * 4095 // 100)
 
-        state.set_c1_duty(duty_percent)
-        print('[pwm] C1={}%' .format(duty_percent))
+        state.set_c1_wilo_duty_pct(wilo_duty_pct)
+        print('[wilo_pwm] C1 duty={}%' .format(wilo_duty_pct))
 
     def off(self):
-        self.set_duty(0)
+        self.set_wilo_duty(0)
 
 
 # ── ActuatorManager ───────────────────────────────────────────────────────────
@@ -172,7 +172,7 @@ class ActuatorManager:
     def __init__(self, i2c, plc_io=None):
         self._pca = None
         self._plc_io = plc_io
-        self.c1_pwm = None
+        self.c1_wilo_pwm = None
         self.relays = {}
 
         if self._plc_io is None:
@@ -184,7 +184,7 @@ class ActuatorManager:
         else:
             print('[actuators] usando plc_io come HAL uscite')
 
-        self.c1_pwm = PWMOutput(self._pca, config.C1_PWM_CH, plc_io=self._plc_io, plc_name=config.C1_PWM_OUTPUT)
+        self.c1_wilo_pwm = PWMOutput(self._pca, config.C1_PWM_CH, plc_io=self._plc_io, plc_name=config.C1_PWM_OUTPUT)
 
         for name, ch in config.RELAY_OUTPUTS.items():
             self.relays[name] = RelayOutput(name, self._pca, ch, plc_io=self._plc_io, plc_name=config.RELAY_PLC_OUTPUTS.get(name))
@@ -198,16 +198,16 @@ class ActuatorManager:
             raise ValueError('relay {} non definito'.format(name))
         relay.set(value)
 
-    def set_c1_pwm(self, duty_percent):
-        self.c1_pwm.set_duty(duty_percent)
+    def set_c1_wilo_duty(self, wilo_duty_pct):
+        self.c1_wilo_pwm.set_wilo_duty(wilo_duty_pct)
 
     def all_off(self):
-        self.c1_pwm.off()
+        self.c1_wilo_pwm.off()
         for relay in self.relays.values():
             relay.set(config.SAFE_RELAY_STATE)
 
     def snapshot(self):
         return {
-            'c1_pwm': self.c1_pwm.duty,
+            'c1_wilo_duty_pct': self.c1_wilo_pwm.wilo_duty_pct,
             'relays': {name: relay.state for name, relay in self.relays.items()},
         }

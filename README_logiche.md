@@ -10,13 +10,13 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 ## 2. Logiche di controllo (Blocks)
 ### Block 1: Controllo pannelli solari (C1)
 - **Modulo**: `control_panels.py`
-- **Scopo**: Regolare la pompa C1 (PWM 0-10V) per ottimizzare raccolta calore dai pannelli, bilanciando delta temperature.
+- **Scopo**: Regolare la pompa C1 con duty Wilo PWM2 invertito per ottimizzare raccolta calore dai pannelli, bilanciando delta temperature.
 - **Logica** (`control_panels_task`):
   - Calcola `delta_solare = S1 - S2` (pannelli vs boiler solare).
-  - Se delta > soglia minima, attiva C1 con duty cycle basato su friction factor e hysteresis.
+  - Se delta > soglia minima, attiva C1 con wilo duty basato su friction factor e hysteresis.
   - Override manuale, hard stop su allarmi sensori.
   - Antilegionella: Ciclo periodico per prevenire batteri (configurabile).
-- **Uscita**: C1 PWM su Q0.5 del PLC 21 (switch B1 = ON).
+- **Uscita**: C1 Wilo PWM2 su Q0.5 del PLC 21 (switch B1 = ON).
 - **Ingressi**: Temperature S1-S3.
 
 ### Block 2: Logiche piscina e riscaldamento
@@ -46,7 +46,7 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 
 ## 3. Gestione I/O
 - **Sensori temperatura** (`sensors.py`): DS18B20 via DS2482, lettura asincrona ogni 1s, validazione, allarmi su sensori invalidi.
-- **Attuatori** (`actuators.py`): PCA9685 per relè/PWM, safe state OFF.
+- **Attuatori** (`actuators.py`): PCA9685 per relè e duty Wilo PWM2, safe state OFF.
 - **Ingressi digitali** (`inputs.py`): MCP23008 + GPIO diretti, debounce configurabile (`INPUT_DEBOUNCE_MS`, attualmente 50ms).
 
 ## 4. Comunicazioni
