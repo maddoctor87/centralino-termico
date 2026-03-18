@@ -3512,7 +3512,7 @@ class ACSManualModeIn(BaseModel):
 
 
 class ACSRelayIn(BaseModel):
-    name: Literal["C2", "CR", "P4", "P5", "VALVE"]
+    name: Literal["C2", "PISCINA_PUMP", "HEAT_PUMP", "CR", "VALVE", "GAS_ENABLE", "PDC_CMD_START_ACR"]
     state: bool
 
 
@@ -3523,6 +3523,10 @@ class ACSPWMIn(BaseModel):
 class ACSSetpointIn(BaseModel):
     key: Literal["solar_target_c", "pdc_target_c", "recirc_target_c", "antileg_target_c"]
     value: float
+
+
+class ACSPoolJustFilledIn(BaseModel):
+    enabled: bool
 
 
 @app.post("/api/acs/manual-mode")
@@ -3563,6 +3567,16 @@ def acs_set_setpoint(body: ACSSetpointIn, user=Depends(require_role(acs_module.A
     if not ok:
         raise HTTPException(status_code=503, detail="Publish MQTT fallito")
     return {"ok": True, "setpoint": {"key": body.key, "value": body.value}}
+
+
+@app.post("/api/acs/pool-just-filled")
+def acs_set_pool_just_filled(body: ACSPoolJustFilledIn, user=Depends(require_role(acs_module.ACS_ROLES))):
+    if not acs_bridge:
+        raise HTTPException(status_code=503, detail="ACS bridge non avviato")
+    ok = acs_bridge.publish_cmd({"pool_just_filled": body.enabled})
+    if not ok:
+        raise HTTPException(status_code=503, detail="Publish MQTT fallito")
+    return {"ok": True, "pool_just_filled": body.enabled}
 
 
 # --- Tasks APIs ---

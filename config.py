@@ -54,17 +54,19 @@ I2C_FREQ = 100_000
 #   Q0.2 → ch  9
 #   Q0.3 → ch  8
 #   Q0.4 → ch 12
-#   A0.5 → ch 13 (PWM, B1 ON)
+#   A0.5 → ch 13 (PWM)
 #   Q0.6 → ch  6
 #   Q0.7 → ch  7
 PCA9685_ADDR = 0x40
 PCA9685_FREQ = 500
 
 DO_C2_CH = 11
-DO_CR_CH = 10
-DO_P4_CH = 9
-DO_P5_CH = 8
+DO_PISCINA_PUMP_CH = 10
+DO_HEAT_PUMP_CH = 9
+DO_CR_CH = 8
 DO_VALVE_CH = 12
+DO_GAS_ENABLE_CH = 6
+DO_PDC_CMD_START_ACR_CH = 7
 
 C1_PWM_OUTPUT = 'A0.5'
 C1_PWM_CH = 13
@@ -72,18 +74,22 @@ C1_PWM_FREQ_HZ = 500
 
 RELAY_OUTPUTS = {
     'C2': DO_C2_CH,
+    'PISCINA_PUMP': DO_PISCINA_PUMP_CH,
+    'HEAT_PUMP': DO_HEAT_PUMP_CH,
     'CR': DO_CR_CH,
-    'P4': DO_P4_CH,
-    'P5': DO_P5_CH,
     'VALVE': DO_VALVE_CH,
+    'GAS_ENABLE': DO_GAS_ENABLE_CH,
+    'PDC_CMD_START_ACR': DO_PDC_CMD_START_ACR_CH,
 }
 
 RELAY_PLC_OUTPUTS = {
     'C2': 'Q0.0',
-    'CR': 'Q0.1',
-    'P4': 'Q0.2',
-    'P5': 'Q0.3',
+    'PISCINA_PUMP': 'Q0.1',
+    'HEAT_PUMP': 'Q0.2',
+    'CR': 'Q0.3',
     'VALVE': 'Q0.4',
+    'GAS_ENABLE': 'Q0.6',
+    'PDC_CMD_START_ACR': 'Q0.7',
 }
 
 # ── Ingressi applicativi del firmware ─────────────────────────────────────────
@@ -172,6 +178,14 @@ CR_EMERG_TEMP = 80.0
 
 # ── Antilegionella ────────────────────────────────────────────────────────────
 ANTILEGIONELLA_OK_SECONDS = 3600
+
+# ── Block 2 piscina / riscaldamento (predisposizione) ────────────────────────
+# Nota: il controller Block 2 non è ancora schedulato in main.py in questa repo.
+POOL_JUST_FILLED = False
+POOL_C2_GAS_BOOST_AFTER_S = 3600
+GAS_OFF_DELAY_S = 120
+VALVE_OFF_DELAY_S = 120
+PDC_C2_CMD_HOLD_S = 30
 
 # ── Setpoint configurabili ────────────────────────────────────────────────────
 SETPOINTS_FILE = '/acs_setpoints.json'

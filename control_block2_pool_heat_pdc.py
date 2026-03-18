@@ -1,4 +1,4 @@
-# control_block2_pool_heat_pdc.py - Block 2: GAS, Valve, PDC C2 logic
+# control_block2_pool_heat_pdc.py - Block 2: GAS, EVIE valve, avvio lavoro ACR
 # TODO: Update parameters when server implements them. Currently using placeholders.
 
 import time
@@ -7,13 +7,19 @@ import state
 
 
 class Block2Controller:
-    """Controller for Block 2: GAS_ENABLE, VALVE_RELAY, PDC_CMD_START_C2, HEAT_PUMP, PISCINA_PUMP"""
+    """Controller for Block 2: GAS_ENABLE, VALVE, PDC_CMD_START_ACR, HEAT_PUMP, PISCINA_PUMP"""
 
     def __init__(self):
         self.gas_off_timer = 0
         self.valve_off_timer = 0
         self.pdc_cmd_hold_timer = 0
         self.c2_work_start = None  # For boost timer
+
+    def _pool_just_filled_active(self):
+        getter = getattr(state, 'get_pool_just_filled', None)
+        if callable(getter):
+            return bool(getter())
+        return bool(getattr(config, 'POOL_JUST_FILLED', False))
 
     def _should_activate_gas(self, inputs):
         """Determine if GAS_ENABLE should be ON"""
@@ -39,26 +45,26 @@ class Block2Controller:
             self.c2_work_start = None
 
         # Pool just filled
-        if config.POOL_JUST_FILLED:
+        if self._pool_just_filled_active():
             return True
 
         return False
 
     def _should_activate_valve(self, inputs):
-        """Determine if VALVE_RELAY should be ON"""
+        """Determine if VALVE should be ON"""
         # Pool or heat request
         if (inputs.get('POOL_THERMOSTAT_CALL', False) or
             inputs.get('HEAT_HELP_REQUEST', False)):
             return True
 
         # Pool just filled
-        if config.POOL_JUST_FILLED:
+        if self._pool_just_filled_active():
             return True
 
         return False
 
     def _should_cmd_pdc_c2(self, inputs):
-        """Determine if PDC_CMD_START_C2 should be ON"""
+        """Determine if PDC_CMD_START_ACR should be ON"""
         # Only when PDC C1 is OFF
         if inputs.get('PDC_WORK_ACS', False):
             return False
@@ -69,7 +75,7 @@ class Block2Controller:
             return False
 
         # Pool just filled always commands PDC C2
-        if config.POOL_JUST_FILLED:
+        if self._pool_just_filled_active():
             return True
 
         # Normal case: command PDC C2
@@ -129,16 +135,16 @@ class Block2Controller:
 
         # Set outputs
         actuator_mgr.set_relay('GAS_ENABLE', gas_on)
-        actuator_mgr.set_relay('VALVE_RELAY', valve_on)
-        actuator_mgr.set_relay('PDC_CMD_START_C2', pdc_cmd_on)
+        actuator_mgr.set_relay('VALVE', valve_on)
+        actuator_mgr.set_relay('PDC_CMD_START_ACR', pdc_cmd_on)
         actuator_mgr.set_relay('HEAT_PUMP', heat_pump_on)
         actuator_mgr.set_relay('PISCINA_PUMP', piscina_pump_on)
 
         # Update state
         state.set_block2_outputs({
             'gas_enable': gas_on,
-            'valve_relay': valve_on,
-            'pdc_cmd_start_c2': pdc_cmd_on,
+            'valve': valve_on,
+            'pdc_cmd_start_acr': pdc_cmd_on,
             'heat_pump': heat_pump_on,
             'piscina_pump': piscina_pump_on
         })

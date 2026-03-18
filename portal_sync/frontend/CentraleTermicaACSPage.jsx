@@ -28,10 +28,12 @@ const ALARM_LABELS = {
 
 const RELAY_META = {
   C2: { label: 'C2', title: 'Pompa trasferimento', detail: 'Solare → PDC' },
-  CR: { label: 'CR', title: 'Pompa ricircolo', detail: 'Collettore ACS' },
-  P4: { label: 'P4', title: 'Pompa 4', detail: 'Uscita relè dedicata' },
-  P5: { label: 'P5', title: 'Pompa 5', detail: 'Uscita relè dedicata' },
-  VALVE: { label: 'VALVE', title: 'Valvola fail-safe', detail: 'Relè valvola' },
+  PISCINA_PUMP: { label: 'Q0.1', title: 'Pompa piscina', detail: 'Richiesta piscina' },
+  HEAT_PUMP: { label: 'Q0.2', title: 'Pompa aiuto riscaldamento', detail: 'Supporto riscaldamento' },
+  CR: { label: 'Q0.3', title: 'Pompa ricircolo', detail: 'Collettore ACS' },
+  VALVE: { label: 'Q0.4', title: 'Valvola EVIE', detail: 'Valvola motorizzata' },
+  GAS_ENABLE: { label: 'Q0.6', title: 'GAS', detail: 'Abilitazione gas' },
+  PDC_CMD_START_ACR: { label: 'Q0.7', title: 'Avvio lavoro ACR', detail: 'Comando PDC' },
 };
 
 const SENSOR_ALARM_MAP = {
@@ -43,6 +45,58 @@ const SENSOR_ALARM_MAP = {
   S6: 'ALARM_SENSORS_CR',
   S7: 'ALARM_SENSORS_CR',
 };
+
+const WILO_STOP_DUTY_PCT = 95;
+const WILO_MIN_RUN_DUTY_PCT = 85;
+const WILO_MAX_RUN_DUTY_PCT = 5;
+
+function clampPct(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Math.max(0, Math.min(100, Math.round(num)));
+}
+
+function getWiloSpeedPct(wiloDutyPct) {
+  const duty = clampPct(wiloDutyPct);
+  if (duty <= 0 || duty >= WILO_STOP_DUTY_PCT) return 0;
+
+  const boundedDuty = Math.max(WILO_MAX_RUN_DUTY_PCT, Math.min(WILO_MIN_RUN_DUTY_PCT, duty));
+  const speedPct = 1 + ((WILO_MIN_RUN_DUTY_PCT - boundedDuty) * 99) / (WILO_MIN_RUN_DUTY_PCT - WILO_MAX_RUN_DUTY_PCT);
+  return Math.round(speedPct);
+}
+
+function getWiloState(wiloDutyPct) {
+  const duty = clampPct(wiloDutyPct);
+  const speedPct = getWiloSpeedPct(duty);
+
+  if (duty === 0) {
+    return {
+      duty,
+      speedPct: 0,
+      running: false,
+      label: 'OFF',
+      detail: 'uscita non inizializzata',
+    };
+  }
+
+  if (duty >= WILO_STOP_DUTY_PCT) {
+    return {
+      duty,
+      speedPct: 0,
+      running: false,
+      label: 'STOP',
+      detail: 'standby Wilo PWM2',
+    };
+  }
+
+  return {
+    duty,
+    speedPct,
+    running: true,
+    label: `${duty}%`,
+    detail: `velocita stimata ${speedPct}%`,
+  };
+}
 
 function fmt(val, unit = '°C') {
   if (val === null || val === undefined) return '—';
@@ -157,7 +211,7 @@ function SectionTitle({ children }) {
 }
 
 function WiloDutyBar({ wiloDutyPct }) {
-  const pct = Math.max(0, Math.min(100, wiloDutyPct ?? 0));
+  const wiloState = getWiloState(wiloDutyPct);
   return (
     <div style={{ marginTop: 4 }}>
       <div style={{
@@ -168,14 +222,16 @@ function WiloDutyBar({ wiloDutyPct }) {
         border: '1px solid var(--border)',
       }}>
         <div style={{
-          width: `${pct}%`,
+          width: `${wiloState.speedPct}%`,
           height: '100%',
-          background: pct > 0 ? 'var(--ok)' : 'var(--border)',
+          background: wiloState.running ? 'var(--ok)' : 'var(--border)',
           transition: 'width 0.4s ease',
         }} />
       </div>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-        Duty Wilo PWM2: {pct}%
+        {wiloState.running
+          ? `Duty Wilo PWM2: ${wiloState.duty}% · velocita stimata ${wiloState.speedPct}%`
+          : `Duty Wilo PWM2: ${wiloState.duty}% · ${wiloState.detail}`}
       </div>
     </div>
   );
@@ -364,7 +420,9 @@ export default function CentraleTermicaACSPage() {
 
   useEffect(() => {
     if (!data) return;
-    setPwmDraft((prev) => (prev === '' ? String(data.manual_c1_wilo_duty_pct ?? data.c1_wilo_duty_pct ?? 0) : prev));
+    setPwmDraft((prev) => (prev === ''
+      ? String(data.manual_c1_wilo_duty_pct ?? data.manual_pwm_duty ?? data.c1_wilo_duty_pct ?? data.c1_duty ?? 0)
+      : prev));
     setSetpointDrafts((prev) => {
       const next = { ...prev };
       let changed = false;
@@ -480,6 +538,13 @@ export default function CentraleTermicaACSPage() {
     }
   };
 
+  const sendPoolJustFilled = (enabled) => postCommand(
+    'pool-just-filled',
+    '/api/acs/pool-just-filled',
+    { enabled },
+    enabled ? 'Flag piscina appena riempita attivato.' : 'Flag piscina appena riempita azzerato.',
+  );
+
   if (loading && !data) {
     return <div style={{ padding: 24 }}>Caricamento...</div>;
   }
@@ -500,11 +565,13 @@ export default function CentraleTermicaACSPage() {
   const manualRelays = data?.manual_relays ?? {};
   const setpoints = data?.setpoints ?? {};
   const setpointMeta = data?.setpoint_meta ?? {};
-  const c1WiloDutyPct = data?.c1_wilo_duty_pct ?? 0;
+  const c1WiloDutyPct = data?.c1_wilo_duty_pct ?? data?.c1_duty ?? 0;
   const c1Latch = data?.c1_latch ?? false;
   const crEmerg = data?.cr_emerg ?? false;
   const manualMode = data?.manual_mode ?? false;
-  const manualWiloDutyPct = data?.manual_c1_wilo_duty_pct ?? 0;
+  const manualWiloDutyPct = data?.manual_c1_wilo_duty_pct ?? data?.manual_pwm_duty ?? 0;
+  const c1WiloState = getWiloState(c1WiloDutyPct);
+  const poolJustFilled = data?.pool_just_filled ?? false;
   const online = data?.online ?? false;
   const antilegOk = data?.antileg_ok ?? false;
   const antilegOkTs = data?.antileg_ok_ts ?? null;
@@ -560,14 +627,17 @@ export default function CentraleTermicaACSPage() {
 
       <SectionTitle>Attuatori</SectionTitle>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
-        <ActuatorCard label="C1 – Pompa pannelli" sublabel="Duty Wilo PWM2 invertito" active={c1WiloDutyPct > 0}>
+        <ActuatorCard label="C1 – Pompa pannelli" sublabel="Wilo PWM2 invertito (95%=stop, 5%=max)" active={c1WiloState.running}>
           {c1Latch && (
             <div style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 700 }}>
               STOP HARD S4
             </div>
           )}
-          <div style={{ fontSize: 22, fontWeight: 700, color: c1WiloDutyPct > 0 ? 'var(--ok)' : 'var(--text-muted)' }}>
-            {c1WiloDutyPct}%
+          <div style={{ fontSize: 22, fontWeight: 700, color: c1WiloState.running ? 'var(--ok)' : 'var(--text-muted)' }}>
+            {c1WiloState.label}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Duty attuale: {c1WiloState.duty}% ({c1WiloState.detail})
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             Richiesta manuale: {manualWiloDutyPct}%
@@ -624,7 +694,7 @@ export default function CentraleTermicaACSPage() {
               <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Pilotaggio pompa pannelli su Q0.5 (switch B1 = ON)</div>
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Duty attuale {c1WiloDutyPct}% · richiesta manuale {manualWiloDutyPct}%
+              Duty attuale {c1WiloState.duty}% ({c1WiloState.detail}) · richiesta manuale {manualWiloDutyPct}%
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <input
@@ -662,6 +732,41 @@ export default function CentraleTermicaACSPage() {
                 }}
               >
                 Off
+              </button>
+            </div>
+          </div>
+
+          <div className="card" style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div>
+              <div style={{ fontWeight: 700 }}>Piscina appena riempita</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Flag operativo per la logica Block 2 piscina/riscaldamento.
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Stato flag: <span style={{ fontWeight: 700, color: poolJustFilled ? 'var(--warn)' : 'var(--text-muted)' }}>
+                {poolJustFilled ? 'ATTIVO' : 'SPENTO'}
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Effetto operativo solo se il Block 2 e integrato nel firmware attivo.
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!online || busyKey === 'pool-just-filled' || poolJustFilled}
+                onClick={() => sendPoolJustFilled(true)}
+              >
+                {busyKey === 'pool-just-filled' ? '...' : 'Segna riempita'}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={!online || busyKey === 'pool-just-filled' || !poolJustFilled}
+                onClick={() => sendPoolJustFilled(false)}
+              >
+                Azzera flag
               </button>
             </div>
           </div>

@@ -15,12 +15,12 @@ Questo documento mostra la mappatura dei pin / morsetti usati dal firmware per l
 | Morsetto | Canale PCA9685 | GPIO ESP32 | Funzione firmware | Carico | Note |
 |---------|----------------|------------|-------------------|--------|------|
 | Q0.0 | ch 11 | - | C2 (pompa trasferimento solare -> PDC) | Relè Finder 24Vdc | ON/OFF |
-| Q0.1 | ch 10 | - | CR (pompa ricircolo collettore) | Relè Finder 24Vdc | ON/OFF |
-| Q0.2 | ch 9 | - | PISCINA_PUMP (pompa piscina, attivata da POOL_THERMOSTAT_CALL) | Relè Finder 24Vdc | ON/OFF |
-| Q0.4 | ch 12 | - | VALVE_RELAY (valvola motorizzata fail-safe) | Relè Finder 24Vdc | ON/OFF |
+| Q0.1 | ch 10 | - | PISCINA_PUMP (pompa piscina) | Relè Finder 24Vdc | ON/OFF |
+| Q0.2 | ch 9 | - | HEAT_PUMP (pompa aiuto riscaldamento) | Relè Finder 24Vdc | ON/OFF |
+| Q0.3 | ch 8 | - | CR (pompa ricircolo collettore) | Relè Finder 24Vdc | ON/OFF |
+| Q0.4 | ch 12 | - | VALVE / valvola EVIE | Relè Finder 24Vdc | ON/OFF |
 | Q0.6 | ch 6 | - | GAS_ENABLE (abilitazione gas) | Relè Finder 24Vdc | ON/OFF |
-| Q0.7 | ch 7 | - | PDC_CMD_START_C2 (comando avvio lavoro C2 verso PDC) | Relè Finder 24Vdc | ON/OFF |
-| - | ch 0 | - | HEAT_PUMP (pompa per aiuto riscaldamento) | Relè Finder 24Vdc | ON/OFF (richiede espansione I2C esterna) |
+| Q0.7 | ch 7 | - | PDC_CMD_START_ACR (comando avvio lavoro ACR verso PDC) | Relè Finder 24Vdc | ON/OFF |
 
 ---
 ## 3) Ingressi digitali (I0.x / MCP23008 @ 0x21)
@@ -38,14 +38,11 @@ Questo documento mostra la mappatura dei pin / morsetti usati dal firmware per l
 ---
 ## 4) Pompa PWM Wilo (C1)
 
-- **Uscita usata dal firmware**: **Q0.5**
-- **Configurazione hardware**: **switch zona B, switch 1 = ON**
-- **Nota manuale PLC 21**:
-  - B1 ON → Q0.5
-  - B1 OFF → A0.5
+- **Uscita usata dal firmware**: **A0.5**
+- **Configurazione hardware**: **switch zona B, switch 1 = OFF**
 - **Uso nel progetto**: comando duty Wilo PWM2 della pompa C1
 
-> Il firmware usa Q0.5 come uscita PWM. A0.5 non è usata nel progetto attuale.
+> Il firmware usa A0.5 come uscita PWM per la pompa C1 Wilo PWM2.
 ---
 ## 5) Sensori temperatura (1-Wire)
 

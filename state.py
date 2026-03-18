@@ -40,11 +40,17 @@ manual_relays = {name: False for name in config.RELAY_OUTPUTS}
 c2_on = False
 cr_on = False
 p4_on = False
+p5_on = False
 valve_on = False
+piscina_pump_on = False
+heat_pump_on = False
+gas_enable_on = False
+pdc_cmd_start_acr_on = False
 
 # ── Comandi manuali ───────────────────────────────────────────────────────────
 manual_mode = False
 manual_c1_wilo_duty_pct = 0
+pool_just_filled = bool(getattr(config, 'POOL_JUST_FILLED', False))
 
 # ── Setpoint ──────────────────────────────────────────────────────────────────
 setpoints = {key: meta['default'] for key, meta in config.SETPOINTS.items()}
@@ -73,6 +79,13 @@ c1_latched_hard_stop = False
 c2_on_state = False
 cr_on_state = False
 cr_emerg_mode = False
+block2_outputs = {
+    'gas_enable': False,
+    'valve': False,
+    'pdc_cmd_start_acr': False,
+    'heat_pump': False,
+    'piscina_pump': False,
+}
 
 # ── Feedback C2 NC ────────────────────────────────────────────────────────────
 c2_fb_expected = None
@@ -90,11 +103,17 @@ last_snapshot_ts = 0
 
 
 def _sync_legacy_relays():
-    global c2_on, cr_on, p4_on, valve_on
+    global c2_on, cr_on, p4_on, p5_on, valve_on
+    global piscina_pump_on, heat_pump_on, gas_enable_on, pdc_cmd_start_acr_on
     c2_on = bool(relay_states.get('C2'))
     cr_on = bool(relay_states.get('CR'))
-    p4_on = bool(relay_states.get('P4'))
+    p4_on = bool(relay_states.get('HEAT_PUMP'))
+    p5_on = bool(relay_states.get('CR'))
     valve_on = bool(relay_states.get('VALVE'))
+    piscina_pump_on = bool(relay_states.get('PISCINA_PUMP'))
+    heat_pump_on = bool(relay_states.get('HEAT_PUMP'))
+    gas_enable_on = bool(relay_states.get('GAS_ENABLE'))
+    pdc_cmd_start_acr_on = bool(relay_states.get('PDC_CMD_START_ACR'))
 
 
 def _clamp_float(value, low, high):
@@ -259,10 +278,27 @@ def set_manual_c1_wilo_duty_pct(wilo_duty_pct):
     manual_c1_wilo_duty_pct = max(0, min(100, int(wilo_duty_pct)))
 
 
+def set_pool_just_filled(enabled):
+    global pool_just_filled
+    pool_just_filled = bool(enabled)
+
+
+def get_pool_just_filled():
+    return bool(pool_just_filled)
+
+
 def set_manual_relay(name, value):
     if name not in manual_relays:
         raise KeyError(name)
     manual_relays[name] = bool(value)
+
+
+def set_block2_outputs(values):
+    if not isinstance(values, dict):
+        return
+    for key in block2_outputs:
+        if key in values:
+            block2_outputs[key] = bool(values[key])
 
 
 # ── Snapshot ──────────────────────────────────────────────────────────────────
@@ -276,12 +312,18 @@ def snapshot():
         'c2_on': c2_on,
         'cr_on': cr_on,
         'p4_on': p4_on,
+        'p5_on': p5_on,
         'valve_on': valve_on,
+        'piscina_pump_on': piscina_pump_on,
+        'heat_pump_on': heat_pump_on,
+        'gas_enable_on': gas_enable_on,
+        'pdc_cmd_start_acr_on': pdc_cmd_start_acr_on,
         'relays': dict(relay_states),
         'relay_available': dict(relay_available),
         'manual_mode': manual_mode,
         'manual_relays': dict(manual_relays),
         'manual_c1_wilo_duty_pct': manual_c1_wilo_duty_pct,
+        'pool_just_filled': pool_just_filled,
         'setpoints': dict(setpoints),
         'setpoint_meta': dict(setpoint_meta),
         'alarms': dict(alarms),
@@ -290,6 +332,7 @@ def snapshot():
         'c2_fb_last_change_ts': c2_fb_last_change_ts,
         'c2_fb_alarm': c2_fb_alarm,
         'cr_emerg': cr_emerg_mode,
+        'block2_outputs': dict(block2_outputs),
         'antileg_ok': antileg_ok,
         'antileg_ok_ts': antileg_ok_ts,
         'antileg_request': antileg_request,

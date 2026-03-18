@@ -49,6 +49,10 @@ def _on_cmd(topic, msg):
             state.set_manual_mode(d['manual_mode'])
             print('[mqtt] manual_mode =', state.manual_mode)
 
+        if 'pool_just_filled' in d:
+            state.set_pool_just_filled(d['pool_just_filled'])
+            print('[mqtt] pool_just_filled =', state.get_pool_just_filled())
+
         relay_cmd = d.get('relay')
         if isinstance(relay_cmd, dict):
             name  = relay_cmd.get('name')

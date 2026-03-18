@@ -12,6 +12,8 @@ Il firmware attuale include la struttura base di boot, sensori, attuatori, ingre
 
 Il Block 2 (logiche piscina / riscaldamento / GAS / valvola / comando PDC C2) è previsto a progetto ma non ancora integrato nel `main.py` della repo corrente.
 
+Il flag MQTT `pool_just_filled` / "piscina appena riempita" puo essere ricevuto e pubblicato nello snapshot stato, ma non produce effetti finche il Block 2 non viene schedulato nel firmware attivo.
+
 ## Componenti principali
 - Industrial Shields ESP32 PLC 21
 - DS2482 su I2C
@@ -25,3 +27,4 @@ Il Block 2 (logiche piscina / riscaldamento / GAS / valvola / comando PDC C2) è
 - Il comando C1 usa un duty Wilo PWM2 invertito su Q0.5 del PLC 21 con switch B1 = ON.
 - I segnali `POOL_THERMOSTAT_CALL` e `HEAT_HELP_REQUEST` sono già allineati nella repo corrente.
 - I segnali `PDC_WORK_ACS`, `PDC_WORK_ACR` e `PDC_HELP_REQUEST` sono target del futuro Block 2 e vanno mappati esplicitamente in `config.py` / `inputs.py` quando sarà implementato.
+- Il comando MQTT per la piscina appena riempita è `{"pool_just_filled": true|false}` su `centralina/cmd`.

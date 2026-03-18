@@ -29,14 +29,19 @@ class ACSStore:
         "c1_wilo_duty_pct": 0,
         "c2_on": False,
         "cr_on": False,
+        "piscina_pump_on": False,
+        "heat_pump_on": False,
+        "gas_enable_on": False,
+        "pdc_cmd_start_acr_on": False,
         "p4_on": False,
         "p5_on": False,
         "valve_on": False,
-        "relays": {k: False for k in ("C2", "CR", "P4", "P5", "VALVE")},
-        "relay_available": {k: False for k in ("C2", "CR", "P4", "P5", "VALVE")},
+        "relays": {k: False for k in ("C2", "PISCINA_PUMP", "HEAT_PUMP", "CR", "VALVE", "GAS_ENABLE", "PDC_CMD_START_ACR")},
+        "relay_available": {k: False for k in ("C2", "PISCINA_PUMP", "HEAT_PUMP", "CR", "VALVE", "GAS_ENABLE", "PDC_CMD_START_ACR")},
         "manual_mode": False,
-        "manual_relays": {k: False for k in ("C2", "CR", "P4", "P5", "VALVE")},
+        "manual_relays": {k: False for k in ("C2", "PISCINA_PUMP", "HEAT_PUMP", "CR", "VALVE", "GAS_ENABLE", "PDC_CMD_START_ACR")},
         "manual_c1_wilo_duty_pct": 0,
+        "pool_just_filled": False,
         "setpoints": {
             "solar_target_c": 55.0,
             "pdc_target_c": 50.0,
@@ -57,6 +62,13 @@ class ACSStore:
         },
         "c1_latch": False,
         "cr_emerg": False,
+        "block2_outputs": {
+            "gas_enable": False,
+            "valve": False,
+            "pdc_cmd_start_acr": False,
+            "heat_pump": False,
+            "piscina_pump": False,
+        },
         "antileg_ok": False,
         "antileg_ok_ts": None,
         "antileg_request": False,
@@ -68,9 +80,18 @@ class ACSStore:
         self._received_at: Optional[float] = None
 
     def _normalize(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        payload = dict(payload)
+        legacy_map = {
+            "c1_duty": "c1_wilo_duty_pct",
+            "manual_pwm_duty": "manual_c1_wilo_duty_pct",
+        }
+        for legacy_key, current_key in legacy_map.items():
+            if current_key not in payload and legacy_key in payload:
+                payload[current_key] = payload[legacy_key]
+
         data = json.loads(json.dumps(self._EMPTY))
         for key, value in payload.items():
-            if key in {"temps", "alarms", "relays", "relay_available", "manual_relays", "setpoints", "setpoint_meta"}:
+            if key in {"temps", "alarms", "relays", "relay_available", "manual_relays", "setpoints", "setpoint_meta", "block2_outputs"}:
                 if isinstance(value, dict):
                     data[key].update(value)
                 continue

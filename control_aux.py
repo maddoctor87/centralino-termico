@@ -1,5 +1,5 @@
 # --- control_aux.py ---
-# Controllo uscite ausiliarie (P4, P5, VALVE).
+# Controllo uscite ausiliarie non gestite da logiche dedicate.
 # Logica automatica TODO: per ora solo modalità manuale o safe state.
 
 import uasyncio as asyncio
@@ -7,7 +7,7 @@ import uasyncio as asyncio
 import config
 import state
 
-_AUX_RELAYS = ('P4', 'P5', 'VALVE')
+_AUX_RELAYS = ('PISCINA_PUMP', 'HEAT_PUMP', 'VALVE', 'GAS_ENABLE', 'PDC_CMD_START_ACR')
 
 
 def run_once(actuator_mgr):

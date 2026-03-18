@@ -25,15 +25,16 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 - **Stato attuale**: previsto a progetto, ma non ancora integrato nel `main.py` della repo corrente.
 - **Logica target** (`Block2Controller.run_once`):
   - **GAS_ENABLE**: ON se PDC_HELP_REQUEST, o PDC lavora su C1 + richiesta piscina/riscaldamento, o boost dopo lavoro continuo C2 su piscina, o piscina appena riempita (placeholder).
-  - **VALVE_RELAY**: ON su richiesta piscina o riscaldamento (devia flusso).
-  - **PDC_CMD_START_C2**: ON se PDC libero da C1 + richiesta piscina/riscaldamento (comanda PDC a lavorare su C2).
+  - **VALVE**: ON su richiesta piscina o riscaldamento (valvola EVIE, devia flusso).
+  - **PDC_CMD_START_ACR**: ON se PDC libero da C1 + richiesta piscina/riscaldamento (comanda il lavoro ACR).
   - **HEAT_PUMP**: ON su richiesta aiuto riscaldamento.
   - **PISCINA_PUMP**: ON su richiesta calore piscina.
   - **Delay/Hold**: Ritardi spegnimento per stabilità (GAS_OFF_DELAY_S, VALVE_OFF_DELAY_S, PDC_C2_CMD_HOLD_S).
   - **Sicurezza**: Spegnimento su ingressi invalidi.
-- **Uscite**: GAS_ENABLE (Q0.6), VALVE_RELAY (Q0.4), PDC_CMD_START_C2 (Q0.7), HEAT_PUMP (ch0), PISCINA_PUMP (Q0.2).
+- **Uscite**: C2 (Q0.0), PISCINA_PUMP (Q0.1), HEAT_PUMP (Q0.2), CR (Q0.3), VALVE (Q0.4), GAS_ENABLE (Q0.6), PDC_CMD_START_ACR (Q0.7).
 - **Ingressi target**: PDC_WORK_ACS/C2, PDC_HELP_REQUEST, POOL_THERMOSTAT_CALL, HEAT_HELP_REQUEST.
 - **Nota**: nella repo corrente sono già allineati `POOL_THERMOSTAT_CALL` e `HEAT_HELP_REQUEST`; i segnali PDC restano da mappare esplicitamente in `config.py` / `inputs.py`.
+- **Flag MQTT predisposto**: `pool_just_filled` puo essere comandato via MQTT/API e viene pubblicato nello snapshot stato, ma finche `control_block2_pool_heat_pdc.py` non viene avviato da `main.py` non cambia nessuna uscita reale.
 
 ### Altri controlli
 - **C2 (trasferimento solare → PDC)**: `control_c2.py`
@@ -50,7 +51,7 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 - **Ingressi digitali** (`inputs.py`): MCP23008 + GPIO diretti, debounce configurabile (`INPUT_DEBOUNCE_MS`, attualmente 50ms).
 
 ## 4. Comunicazioni
-- **MQTT** (`comms_mqtt.py`): Connessione a broker, publish snapshot ogni 10s su `centralina/state`, subscribe comandi su `centralina/cmd` (manual override, antileg, setpoints).
+- **MQTT** (`comms_mqtt.py`): Connessione a broker, publish snapshot ogni 10s su `centralina/state`, subscribe comandi su `centralina/cmd` (manual override, antileg, setpoints, `pool_just_filled`).
 - **Ethernet**: W5500 per rete, DHCP/static IP.
 
 ## 5. Stato e sicurezza
