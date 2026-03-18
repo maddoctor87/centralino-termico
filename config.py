@@ -139,8 +139,8 @@ UNMAPPED_INPUTS = (
 INPUT_DEBOUNCE_MS = 50
 INPUT_POLL_INTERVAL_S = 1
 
-# Feedback relè C2 placeholder applicativo
-C2_FB_NC_NAME = 'FB_C2_NC'
+# Feedback relè C2 disabilitato: nessun controllo mismatch finché non viene cablato un feedback reale.
+C2_FB_NC_NAME = None
 C2_FB_TIMEOUT_S = 1
 
 # Alias retrocompatibilità per eventuali moduli vecchi
