@@ -22,7 +22,7 @@ class Block2Controller:
             return True
 
         # Pool or heat request with PDC C1 ON
-        if inputs.get('PDC_WORK_C1', False) and (
+        if inputs.get('PDC_WORK_ACS', False) and (
             inputs.get('POOL_THERMOSTAT_CALL', False) or
             inputs.get('HEAT_HELP_REQUEST', False)
         ):
@@ -30,7 +30,7 @@ class Block2Controller:
 
         # Boost after C2 working continuously
         if (inputs.get('POOL_THERMOSTAT_CALL', False) and
-            inputs.get('PDC_WORK_C2', False)):
+            inputs.get('PDC_WORK_acr', False)):
             if self.c2_work_start is None:
                 self.c2_work_start = time.time()
             elif (time.time() - self.c2_work_start) >= config.POOL_C2_GAS_BOOST_AFTER_S:
@@ -60,7 +60,7 @@ class Block2Controller:
     def _should_cmd_pdc_c2(self, inputs):
         """Determine if PDC_CMD_START_C2 should be ON"""
         # Only when PDC C1 is OFF
-        if inputs.get('PDC_WORK_C1', False):
+        if inputs.get('PDC_WORK_ACS', False):
             return False
 
         # Pool or heat request
@@ -115,7 +115,7 @@ class Block2Controller:
         # Safety: if inputs invalid, turn off
         input_valid = all(
             inputs.get(name, False) is not None
-            for name in ['PDC_WORK_C1', 'PDC_WORK_C2', 'PDC_HELP_REQUEST',
+            for name in ['PDC_WORK_ACS', 'PDC_WORK_acr', 'PDC_HELP_REQUEST',
                         'POOL_THERMOSTAT_CALL', 'HEAT_HELP_REQUEST']
         )
         if not input_valid:

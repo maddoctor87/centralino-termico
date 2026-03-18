@@ -24,4 +24,4 @@ Il Block 2 (logiche piscina / riscaldamento / GAS / valvola / comando PDC C2) è
 ## Note
 - Il comando PWM della pompa C1 usa Q0.5 del PLC 21 con switch B1 = ON.
 - I segnali `POOL_THERMOSTAT_CALL` e `HEAT_HELP_REQUEST` sono già allineati nella repo corrente.
-- I segnali `PDC_WORK_C1`, `PDC_WORK_C2` e `PDC_HELP_REQUEST` sono target del futuro Block 2 e vanno mappati esplicitamente in `config.py` / `inputs.py` quando sarà implementato.
+- I segnali `PDC_WORK_ACS`, `PDC_WORK_acr` e `PDC_HELP_REQUEST` sono target del futuro Block 2 e vanno mappati esplicitamente in `config.py` / `inputs.py` quando sarà implementato.

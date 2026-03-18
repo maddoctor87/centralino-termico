@@ -32,7 +32,7 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
   - **Delay/Hold**: Ritardi spegnimento per stabilità (GAS_OFF_DELAY_S, VALVE_OFF_DELAY_S, PDC_C2_CMD_HOLD_S).
   - **Sicurezza**: Spegnimento su ingressi invalidi.
 - **Uscite**: GAS_ENABLE (Q0.6), VALVE_RELAY (Q0.4), PDC_CMD_START_C2 (Q0.7), HEAT_PUMP (ch0), PISCINA_PUMP (Q0.2).
-- **Ingressi target**: PDC_WORK_C1/C2, PDC_HELP_REQUEST, POOL_THERMOSTAT_CALL, HEAT_HELP_REQUEST.
+- **Ingressi target**: PDC_WORK_ACS/C2, PDC_HELP_REQUEST, POOL_THERMOSTAT_CALL, HEAT_HELP_REQUEST.
 - **Nota**: nella repo corrente sono già allineati `POOL_THERMOSTAT_CALL` e `HEAT_HELP_REQUEST`; i segnali PDC restano da mappare esplicitamente in `config.py` / `inputs.py`.
 
 ### Altri controlli
