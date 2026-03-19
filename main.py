@@ -18,7 +18,7 @@ from sensors import SensorManager, sensor_task
 from control_panels import control_panels_task
 from control_c2 import control_c2_task
 from control_recirc import control_recirc_task
-from control_aux import control_aux_task
+from control_block2_pool_heat_pdc import control_block2_task
 from comms_mqtt import mqtt_task
 
 _actuator_mgr = None
@@ -121,7 +121,7 @@ async def main():
         asyncio.create_task(control_panels_task(sensor_mgr, _actuator_mgr)),
         asyncio.create_task(control_c2_task(sensor_mgr, _actuator_mgr, input_mgr)),
         asyncio.create_task(control_recirc_task(sensor_mgr, _actuator_mgr)),
-        asyncio.create_task(control_aux_task(_actuator_mgr)),
+        asyncio.create_task(control_block2_task(_actuator_mgr, input_mgr)),
     ]
     if config.MQTT_ENABLED:
         tasks.append(asyncio.create_task(mqtt_task()))

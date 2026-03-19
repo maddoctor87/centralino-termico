@@ -334,10 +334,16 @@ Cosa aspettarti:
 
 # 6. Test specifico relay feedback
 
-I relay feedback attualmente sono cablati su:
-- `I0.10 = ADS48 ch2`
-- `I0.11 = ADS48 ch1`
-- `I0.12 = ADS48 ch0`
+Questo blocco è mantenuto come storico dei test ADS, ma non descrive più il cablaggio reale attuale.
+
+Nel cablaggio reale validato i relay feedback usati dal progetto sono:
+- `I0.0 = MCP23008 0x21 bit 6 = PDC_WORK_ACS`
+- `I0.1 = MCP23008 0x21 bit 4 = PDC_HELP_REQUEST`
+- `I0.2 = MCP23008 0x21 bit 5 = PDC_WORK_ACR`
+- `I0.3 = MCP23008 0x21 bit 3 = HEAT_HELP_REQUEST`
+- `I0.4 = MCP23008 0x21 bit 2 = POOL_THERMOSTAT_CALL`
+
+I tentativi precedenti su `I0.10`, `I0.11`, `I0.12` via ADS restano utili solo come storico di debug e non come riferimento per il firmware attuale.
 
 Funzione dedicata:
 
@@ -543,7 +549,8 @@ Se `A0.5` scrive `4095` ma il livello fisico resta basso:
 # 11. Note sul cablaggio relay feedback
 
 Punto chiave:
-- sui relay feedback cablati su `I0.10`, `I0.11`, `I0.12` non basta un contatto secco
+- nel cablaggio reale validato i relay feedback del progetto vanno letti su `I0.0..I0.4`
+- i tentativi su `I0.10`, `I0.11`, `I0.12` non sono la strada corretta per contatti secchi
 
 Serve:
 - una tensione di riferimento reale

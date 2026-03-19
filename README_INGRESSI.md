@@ -399,12 +399,16 @@ C’è stato un `SyntaxError` quando una chiamata funzione è stata inserita sen
 * lettura reale dei registri MCP23008
 * lettura reale dei canali ADS1015 con classe MicroPython minimale
 * soglia digitale del framework Arduino = `1023`
+* correlazione reale validata per gli ingressi digitali usati dal progetto:
+  `I0.0 -> 0x21 bit 6`, `I0.1 -> 0x21 bit 4`, `I0.2 -> 0x21 bit 5`, `I0.3 -> 0x21 bit 3`, `I0.4 -> 0x21 bit 2`
+* conferma sul campo che i relay feedback utili per il progetto stanno su `I0.0..I0.4`
+* conferma che `I0.5 = GPIO27` e `I0.6 = GPIO26`
+* conferma che `I0.10`, `I0.11`, `I0.12` non sono la strada corretta per contatti secchi di feedback relè
 
 ## Ancora aperto
 
-* correlazione precisa fra ogni morsetto fisico d’ingresso e ogni canale MCP/ADS in condizioni reali di impianto
-* comportamento dinamico durante eventi reali del PLC
-* eventuali particolarità elettriche lato cablaggio/campo
+* comportamento dinamico di eventuali altri ingressi non ancora usati nel progetto
+* eventuali particolarità elettriche residue lato cablaggio/campo fuori dai segnali già validati
 
 ---
 

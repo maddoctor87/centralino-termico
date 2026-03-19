@@ -114,9 +114,9 @@ DIRECT_INPUT_MAP = {
 INPUT_ALIASES = {
     'PDC_WORK_ACS': 'I0.0',
     'PDC_HELP_REQUEST': 'I0.1',
-    'HEAT_HELP_REQUEST': 'I0.2',
-    'POOL_THERMOSTAT_CALL': 'I0.3',
-    'PDC_WORK_ACR': 'I0.4',
+    'PDC_WORK_ACR': 'I0.2',
+    'HEAT_HELP_REQUEST': 'I0.3',
+    'POOL_THERMOSTAT_CALL': 'I0.4',
 }
 
 # Contatti da relè NC:
@@ -126,9 +126,9 @@ INPUT_ALIASES = {
 INPUT_INVERTED = (
     'PDC_WORK_ACS',
     'PDC_HELP_REQUEST',
+    'PDC_WORK_ACR',
     'HEAT_HELP_REQUEST',
     'POOL_THERMOSTAT_CALL',
-    'PDC_WORK_ACR',
 )
 
 # Placeholder applicativi non fisici
@@ -197,8 +197,8 @@ CR_EMERG_TEMP = 80.0
 # ── Antilegionella ────────────────────────────────────────────────────────────
 ANTILEGIONELLA_OK_SECONDS = 3600
 
-# ── Block 2 piscina / riscaldamento (predisposizione) ────────────────────────
-# Nota: il controller Block 2 non è ancora schedulato in main.py in questa repo.
+# ── Block 2 piscina / riscaldamento ──────────────────────────────────────────
+# La logica è schedulata in main.py e governa le uscite ausiliarie fuori dal manuale.
 POOL_JUST_FILLED = False
 POOL_C2_GAS_BOOST_AFTER_S = 3600
 GAS_OFF_DELAY_S = 120

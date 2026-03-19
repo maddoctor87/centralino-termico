@@ -29,9 +29,9 @@ Questo documento mostra la mappatura dei pin / morsetti usati dal firmware per l
 |----------|-------------|------------|------------------|----------|
 | I0.0 | pin 6 | - | PDC_WORK_ACS | Feedback relè NC |
 | I0.1 | pin 4 | - | PDC_HELP_REQUEST | Feedback relè NC |
-| I0.2 | pin 5 | - | HEAT_HELP_REQUEST | Feedback relè NC |
-| I0.3 | pin 3 | - | POOL_THERMOSTAT_CALL | Feedback relè NC |
-| I0.4 | pin 2 | - | PDC_WORK_ACR | Feedback relè NC di Q0.7 |
+| I0.2 | pin 5 | - | PDC_WORK_ACR | Feedback relè NC |
+| I0.3 | pin 3 | - | HEAT_HELP_REQUEST | Feedback relè NC |
+| I0.4 | pin 2 | - | POOL_THERMOSTAT_CALL | Feedback relè NC |
 | I0.5 | - | GPIO 27 | Spare / prototipazione | Non usato negli alias applicativi correnti |
 | I0.6 | - | GPIO 26 | Spare / prototipazione | Non usato negli alias applicativi correnti |
 
@@ -48,9 +48,10 @@ Questo documento mostra la mappatura dei pin / morsetti usati dal firmware per l
 ---
 ## 5) Sensori temperatura (1-Wire)
 
-- **Bridge I2C→1-Wire**: DS2482S-800 @ 0x18 (collegato al bus I2C SDA/SCL)
-- **Sonde**: 7× DS18B20/DS18B22 in parallelo sul bus 1-Wire.
-- **Pull-up**: una resistenza 4.7kΩ tra VCC 5V e data 1-Wire.
+- **Stato attuale**: integrazione sensori non ancora operativa nel cablaggio reale validato.
+- **Bridge I2C→1-Wire**: DS2482S-800 previsto su `0x18`, ma non ancora disponibile sul banco/impianto al momento di questa revisione.
+- **Sonde DS18B20/DS18B22 dirette**: non operative al momento.
+- **Nota progetto**: non usare questa sezione come base per nuove integrazioni definitive finché il bridge DS2482 non è fisicamente disponibile.
 
 Mappatura logica nel firmware (`config.py`):
 - S1: pannelli solari
@@ -82,7 +83,7 @@ Mappatura logica nel firmware (`config.py`):
 ---
 ## 8) Passi successivi (check finale)
 1. Verifica che i relè abbiano la giusta alimentazione 24Vdc.
-2. Assicurati che il bus I2C sia libero e connesso a DS2482, PCA9685 e MCP23008.
+2. Assicurati che il bus I2C sia libero e connesso almeno a PCA9685 e MCP23008; il DS2482 resta opzionale finché non sarà disponibile.
 3. Carica il firmware e testa la ricezione MQTT sul topic configurato (`centralina/cmd`) e l’invio su (`centralina/state`).
 
 ---

@@ -39,15 +39,17 @@ const RELAY_META = {
     terminal: "Q0.1",
     title: "Pompa piscina",
     detail: "Richiesta piscina",
-    automation: "Solo manuale / safe-state",
-    automationNote: "Block 2 non schedulato: fuori dal manuale resta spenta.",
+    automation: "Automatica attiva",
+    automationNote:
+      "Block 2 schedulato: segue richiesta piscina e flag di riempimento.",
   },
   HEAT_PUMP: {
     terminal: "Q0.2",
     title: "Pompa aiuto riscaldamento",
     detail: "Supporto riscaldamento",
-    automation: "Solo manuale / safe-state",
-    automationNote: "Block 2 non schedulato: fuori dal manuale resta spenta.",
+    automation: "Automatica attiva",
+    automationNote:
+      "Block 2 schedulato: segue la richiesta aiuto riscaldamento.",
   },
   CR: {
     terminal: "Q0.3",
@@ -60,22 +62,25 @@ const RELAY_META = {
     terminal: "Q0.4",
     title: "Valvola EVIE",
     detail: "Valvola motorizzata",
-    automation: "Solo manuale / safe-state",
-    automationNote: "Block 2 non schedulato: fuori dal manuale resta spenta.",
+    automation: "Automatica attiva",
+    automationNote:
+      "Block 2 schedulato: si apre su richiesta piscina o riscaldamento.",
   },
   GAS_ENABLE: {
     terminal: "Q0.6",
     title: "GAS",
     detail: "Abilitazione gas",
-    automation: "Solo manuale / safe-state",
-    automationNote: "Block 2 non schedulato: fuori dal manuale resta spento.",
+    automation: "Automatica attiva",
+    automationNote:
+      "Block 2 schedulato: segue richiesta aiuto, ACS o boost piscina.",
   },
   PDC_CMD_START_ACR: {
     terminal: "Q0.7",
     title: "Avvio lavoro ACR",
     detail: "Comando PDC",
-    automation: "Solo manuale / safe-state",
-    automationNote: "Block 2 non schedulato: fuori dal manuale resta spento.",
+    automation: "Automatica attiva",
+    automationNote:
+      "Block 2 schedulato: comanda ACR quando ACS non è attiva e c'è richiesta.",
   },
 };
 
@@ -92,23 +97,23 @@ const INPUT_META = {
     title: "PDC chiede aiuto",
     detail: "Feedback relè NC",
   },
-  HEAT_HELP_REQUEST: {
+  PDC_WORK_ACR: {
     terminal: "I0.2",
     source: "I0.2",
+    title: "PDC lavoro ACR",
+    detail: "Feedback relè NC",
+  },
+  HEAT_HELP_REQUEST: {
+    terminal: "I0.3",
+    source: "I0.3",
     title: "Aiuto riscaldamento",
     detail: "Feedback relè NC",
   },
   POOL_THERMOSTAT_CALL: {
-    terminal: "I0.3",
-    source: "I0.3",
-    title: "Richiesta piscina",
-    detail: "Feedback relè NC",
-  },
-  PDC_WORK_ACR: {
     terminal: "I0.4",
     source: "I0.4",
-    title: "PDC lavoro ACR",
-    detail: "Feedback NC del relè Q0.7",
+    title: "Richiesta piscina",
+    detail: "Feedback relè NC",
   },
 };
 
@@ -383,9 +388,8 @@ function ManualModeCard({ manualMode, online, busy, onToggle }) {
           <div style={{ fontWeight: 700 }}>Modalità manuale</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
             Con manuale ON, tutte le uscite della centrale passano sotto comando
-            diretto dal portale. Con manuale OFF, C1/C2/CR restano in automatico
-            e le uscite del Block 2 tornano in safe-state finché quella logica
-            non viene schedulata.
+            diretto dal portale. Con manuale OFF, tutte le logiche automatiche
+            tornano attive, incluso il Block 2 piscina/riscaldamento.
           </div>
         </div>
         <div
@@ -433,16 +437,18 @@ function RuntimeStatusCard() {
     >
       <div style={{ fontWeight: 700 }}>Firmware attivo nel progetto</div>
       <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-        Automatiche attive: C1 pannelli, C2 trasferimento solare, CR ricircolo.
+        Automatiche attive: C1 pannelli, C2 trasferimento solare, CR ricircolo e
+        Block 2 piscina/riscaldamento.
       </div>
       <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-        Uscite ausiliarie Q0.1, Q0.2, Q0.4, Q0.6 e Q0.7: solo manuale /
-        safe-state. Il Block 2 esiste nel repo ma non è schedulato nel firmware
-        attivo.
+        Q0.1, Q0.2, Q0.4, Q0.6 e Q0.7 ora sono governate dalla logica Block 2
+        con gli ingressi piscina/riscaldamento e con il flag
+        <code>pool_just_filled</code>.
       </div>
       <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-        Quando abiliti la modalità manuale, anche C1, C2 e CR smettono di
-        seguire la logica automatica e rispondono solo ai comandi del portale.
+        Quando abiliti la modalità manuale, anche C1, C2, CR e le uscite Block 2
+        smettono di seguire la logica automatica e rispondono solo ai comandi
+        del portale.
       </div>
       <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
         C1 usa l'uscita PWM <strong>A0.5</strong> con duty Wilo PWM2 invertito:
@@ -1203,8 +1209,9 @@ export default function CentraleTermicaACSPage() {
               </span>
             </div>
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              Nel firmware attivo il Block 2 non è schedulato: questo flag viene
-              memorizzato e pubblicato, ma non cambia ancora uscite reali.
+              Nel firmware attivo questo flag entra nella logica Block 2 e puo
+              avviare pompa piscina, valvola, GAS e comando ACR secondo le
+              regole runtime.
             </div>
             <div
               style={{
