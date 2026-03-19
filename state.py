@@ -13,6 +13,12 @@ import config
 
 # ── Temperature ───────────────────────────────────────────────────────────────
 temps = {label: None for label in config.SENSOR_LABELS}
+local_temps = {label: None for label in config.SENSOR_LABELS}
+remote_temps = {label: None for label in config.SENSOR_LABELS}
+temp_sources = {label: None for label in config.SENSOR_LABELS}
+temp_remote_received_at = None
+temp_remote_payload_ts = None
+temp_remote_topic = None
 
 # ── Ingressi digitali ─────────────────────────────────────────────────────────
 inputs = {}
@@ -174,15 +180,84 @@ def save_settings():
 
 # ── Temperature ───────────────────────────────────────────────────────────────
 
-def set_temp(label, value):
-    if label in temps:
-        temps[label] = value
+def _temp_fallback_enabled():
+    return bool(getattr(config, 'MQTT_TEMP_FALLBACK_ENABLED', False))
 
 
-def set_all_temps(values):
+def _temp_fallback_stale_s():
+    try:
+        return max(5, int(getattr(config, 'MQTT_TEMP_FALLBACK_STALE_S', 45)))
+    except Exception:
+        return 45
+
+
+def _remote_temps_fresh():
+    if not _temp_fallback_enabled():
+        return False
+    if temp_remote_received_at is None:
+        return False
+    return (time.time() - temp_remote_received_at) <= _temp_fallback_stale_s()
+
+
+def _rebuild_effective_temps():
+    remote_valid = _remote_temps_fresh()
     for label in temps:
-        temps[label] = values.get(label)
+        local_value = local_temps.get(label)
+        remote_value = remote_temps.get(label) if remote_valid else None
+
+        if local_value is not None:
+            temps[label] = local_value
+            temp_sources[label] = 'local'
+        elif remote_value is not None:
+            temps[label] = remote_value
+            temp_sources[label] = 'mqtt'
+        else:
+            temps[label] = None
+            temp_sources[label] = None
     refresh_sensor_alarms()
+
+
+def set_temp(label, value, source='local', payload_ts=None, topic=None):
+    if label not in temps:
+        return
+
+    if source == 'remote':
+        global temp_remote_received_at, temp_remote_payload_ts, temp_remote_topic
+        remote_temps[label] = value
+        temp_remote_received_at = time.time()
+        temp_remote_payload_ts = payload_ts
+        temp_remote_topic = topic
+    else:
+        local_temps[label] = value
+
+    _rebuild_effective_temps()
+
+
+def set_all_temps(values, source='local', payload_ts=None, topic=None):
+    global temp_remote_received_at, temp_remote_payload_ts, temp_remote_topic
+
+    target = remote_temps if source == 'remote' else local_temps
+    values = values if isinstance(values, dict) else {}
+
+    for label in temps:
+        target[label] = values.get(label)
+
+    if source == 'remote':
+        temp_remote_received_at = time.time()
+        temp_remote_payload_ts = payload_ts
+        temp_remote_topic = topic
+
+    _rebuild_effective_temps()
+
+
+def clear_remote_temps():
+    global temp_remote_received_at, temp_remote_payload_ts, temp_remote_topic
+    for label in remote_temps:
+        remote_temps[label] = None
+    temp_remote_received_at = None
+    temp_remote_payload_ts = None
+    temp_remote_topic = None
+    _rebuild_effective_temps()
 
 
 def refresh_sensor_alarms():
@@ -332,9 +407,11 @@ def get_setpoint(name, default=None):
 # ── Snapshot ──────────────────────────────────────────────────────────────────
 
 def snapshot():
+    _rebuild_effective_temps()
     return {
         'ts': time.time(),
         'temps': dict(temps),
+        'temp_sources': dict(temp_sources),
         'inputs': dict(inputs),
         'c1_wilo_duty_pct': c1_wilo_duty_pct,
         'c1_active': c1_active,
@@ -365,4 +442,7 @@ def snapshot():
         'antileg_ok': antileg_ok,
         'antileg_ok_ts': antileg_ok_ts,
         'antileg_request': antileg_request,
+        'temp_remote_received_at': temp_remote_received_at,
+        'temp_remote_payload_ts': temp_remote_payload_ts,
+        'temp_remote_topic': temp_remote_topic,
     }

@@ -11,6 +11,21 @@ import state
 _client = None
 
 
+def _topic_text(topic):
+    if isinstance(topic, bytes):
+        return topic.decode('utf-8')
+    return str(topic)
+
+
+def _remote_temp_topics():
+    if not getattr(config, 'MQTT_TEMP_FALLBACK_ENABLED', False):
+        return ()
+    topics = getattr(config, 'MQTT_TEMP_FALLBACK_TOPICS', ())
+    if isinstance(topics, (bytes, str)):
+        topics = (topics,)
+    return tuple(str(topic) for topic in topics if topic)
+
+
 def _connect():
     global _client
     from umqtt.simple import MQTTClient
@@ -25,6 +40,8 @@ def _connect():
     c.set_callback(_on_cmd)
     c.connect()
     c.subscribe(config.MQTT_TOPIC_CMD)
+    for topic in _remote_temp_topics():
+        c.subscribe(topic)
     _client = c
     print('[mqtt] connesso a {}:{}'.format(config.MQTT_BROKER, config.MQTT_PORT))
 
@@ -35,7 +52,33 @@ def _decode_msg(msg):
     return ujson.loads(msg)
 
 
+def _on_remote_temps(topic, msg):
+    try:
+        d = _decode_msg(msg)
+        if not isinstance(d, dict):
+            return
+
+        temps = d.get('temps')
+        if not isinstance(temps, dict):
+            return
+
+        state.set_all_temps(
+            temps,
+            source='remote',
+            payload_ts=d.get('ts'),
+            topic=topic,
+        )
+    except Exception as e:
+        print('[mqtt] remote temps error:', e)
+
+
 def _on_cmd(topic, msg):
+    topic = _topic_text(topic)
+    if topic != config.MQTT_TOPIC_CMD:
+        if topic in _remote_temp_topics():
+            _on_remote_temps(topic, msg)
+        return
+
     try:
         d = _decode_msg(msg)
         if not isinstance(d, dict):

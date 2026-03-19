@@ -41,6 +41,16 @@ MQTT_TOPIC_CMD = 'centralina/cmd'
 MQTT_KEEPALIVE = 60
 MQTT_QOS = 1
 
+# ── Fallback temporaneo temperature via MQTT ─────────────────────────────────
+# Usa le sonde pubblicate dall'ESP32 temporaneo solo se i sensori locali
+# (DS2482/ROM_MAP) non sono disponibili. Quando arriva il modulo DS sul PLC,
+# impostare MQTT_TEMP_FALLBACK_ENABLED = False.
+MQTT_TEMP_FALLBACK_ENABLED = True
+MQTT_TEMP_FALLBACK_TOPICS = (
+    'centralina/sonde/esp32_sonde_temp_1/state',
+)
+MQTT_TEMP_FALLBACK_STALE_S = 45
+
 # ── I2C ───────────────────────────────────────────────────────────────────────
 I2C_ID = 0
 I2C_SDA = 21
