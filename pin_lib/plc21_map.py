@@ -36,6 +36,8 @@ OUTPUTS = {
     "Q0.2": {"type": "pca_digital", "addr": 0x40, "index": 9},
     "Q0.3": {"type": "pca_digital", "addr": 0x40, "index": 8},
     "Q0.4": {"type": "pca_digital", "addr": 0x40, "index": 12},
+    "Q0.6": {"type": "pca_digital", "addr": 0x40, "index": 6},
+    "Q0.7": {"type": "pca_digital", "addr": 0x40, "index": 7},
 
     # Digital / analog outputs
     "A0.5": {"type": "pca_pwm", "addr": 0x40, "index": 13},
