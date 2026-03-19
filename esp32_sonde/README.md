@@ -31,3 +31,29 @@ ROM_LABELS = {
     "28ff4c1d7216031a": "S2",
 }
 ```
+
+## Comandi REPL
+
+Per ricavare le ROM delle sonde dal REPL MicroPython:
+
+```python
+import onewire, ds18x20, ubinascii
+from machine import Pin
+ds = ds18x20.DS18X20(onewire.OneWire(Pin(4, Pin.OPEN_DRAIN, Pin.PULL_UP)))
+roms = ds.scan()
+[ubinascii.hexlify(r).decode() for r in roms]
+```
+
+Per ricavare ROM e temperatura letta:
+
+```python
+import onewire, ds18x20, ubinascii, time
+from machine import Pin
+ds = ds18x20.DS18X20(onewire.OneWire(Pin(4, Pin.OPEN_DRAIN, Pin.PULL_UP)))
+roms = ds.scan()
+ds.convert_temp()
+time.sleep_ms(750)
+[(ubinascii.hexlify(r).decode(), ds.read_temp(r)) for r in roms]
+```
+
+Se il pin 1-Wire cambia, sostituire `Pin(4, ...)` con il valore reale di `ONEWIRE_GPIO` in [`config.py`](/home/mad/centralino centrale termica/esp32_sonde/config.py).
