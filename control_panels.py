@@ -234,7 +234,13 @@ def run_once(sensor_mgr, actuator_mgr):
     Esegue un ciclo di controllo C1.
     """
     if _manual_mode_active():
-        # In manuale non forziamo l'automatico
+        manual_wilo_duty_pct = getattr(
+            state,
+            "manual_c1_wilo_duty_pct",
+            config.C1_WILO_STANDBY_DUTY_PCT,
+        )
+        actuator_mgr.set_c1_wilo_duty(manual_wilo_duty_pct)
+        _set_c1_active(0 < int(manual_wilo_duty_pct) < config.C1_WILO_STANDBY_DUTY_PCT)
         return
 
     temps = sensor_mgr.snapshot()

@@ -26,7 +26,9 @@ class ACSStore:
     _EMPTY: Dict[str, Any] = {
         "ts": None,
         "temps": {k: None for k in ("S1", "S2", "S3", "S4", "S5", "S6", "S7")},
-        "c1_wilo_duty_pct": 0,
+        "inputs": {},
+        "c1_wilo_duty_pct": 95,
+        "c1_active": False,
         "c2_on": False,
         "cr_on": False,
         "piscina_pump_on": False,
@@ -40,7 +42,7 @@ class ACSStore:
         "relay_available": {k: False for k in ("C2", "PISCINA_PUMP", "HEAT_PUMP", "CR", "VALVE", "GAS_ENABLE", "PDC_CMD_START_ACR")},
         "manual_mode": False,
         "manual_relays": {k: False for k in ("C2", "PISCINA_PUMP", "HEAT_PUMP", "CR", "VALVE", "GAS_ENABLE", "PDC_CMD_START_ACR")},
-        "manual_c1_wilo_duty_pct": 0,
+        "manual_c1_wilo_duty_pct": 95,
         "pool_just_filled": False,
         "setpoints": {
             "solar_target_c": 55.0,
@@ -59,8 +61,12 @@ class ACSStore:
             "ALARM_SENSORS_C2": False,
             "ALARM_SENSORS_CR": False,
             "ALARM_S4_INVALID": False,
+            "ALARM_C2_FB_MISMATCH": False,
         },
         "c1_latch": False,
+        "c2_fb_expected": None,
+        "c2_fb_last_change_ts": 0,
+        "c2_fb_alarm": False,
         "cr_emerg": False,
         "block2_outputs": {
             "gas_enable": False,
