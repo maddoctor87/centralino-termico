@@ -1,8 +1,8 @@
 DEVICE_ID = "esp32_sonde_temp_1"
 MQTT_CLIENT_ID = DEVICE_ID
 
-WIFI_SSID = "TUO_WIFI"
-WIFI_PASSWORD = "TUA_PASSWORD"
+WIFI_SSID = "ITINERIS-Resort"
+WIFI_PASSWORD = ""
 
 # Allineato al broker MQTT del progetto su sstit / rete centrale termica.
 MQTT_BROKER = "192.168.10.20"
@@ -40,4 +40,11 @@ SENSOR_DESCRIPTIONS = {
 # Popolare dopo il primo scan MQTT: chiave ROM hex lowercase -> label S1..S7.
 ROM_LABELS = {
     # "28ff641d7216035c": "S1",
+    "280333bb00000088":"S1",
+    "28f88cbc000000a4":"S2",
+    "284affba000000e7":"S3",
+    "286ceebe0000005c":"S4",
+    "28b470bb000000ad":"S5",
+    "28fbebbc000000bd":"S6",
+    "28a28abf00000051":"S7",
 }

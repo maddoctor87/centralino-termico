@@ -55,5 +55,12 @@ ds.convert_temp()
 time.sleep_ms(750)
 [(ubinascii.hexlify(r).decode(), ds.read_temp(r)) for r in roms]
 ```
+('280333bb00000088', 23.625) pqnnello solare
+('28f88cbc000000a4', 23.875)solare superiore
+('284affba000000e7', 26.0) solare sotto
+('28b470bb000000ad', 26.25) pdc inferiore
+('286ceebe0000005c', 23.625)pdc superiore
+('28a28abf00000051', 24.875)colletore fine
+('28fbebbc000000bd', 24.0625)collettore inizzio
 
 Se il pin 1-Wire cambia, sostituire `Pin(4, ...)` con il valore reale di `ONEWIRE_GPIO` in [`config.py`](/home/mad/centralino centrale termica/esp32_sonde/config.py).
