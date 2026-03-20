@@ -15,7 +15,8 @@ USE_PLC21_IO = True
 # ── Ethernet W5500 (SPI interno, pin fissi) ──────────────────────────────────
 ETH_ENABLED = True
 ETH_SPI_ID = 2
-ETH_SPI_BAUD = 10_000_000
+# Clock più conservativo per migliorare la stabilità del W5500 sul cablaggio reale.
+ETH_SPI_BAUD = 4_000_000
 ETH_SCK = 18
 ETH_MOSI = 23
 ETH_MISO = 19
