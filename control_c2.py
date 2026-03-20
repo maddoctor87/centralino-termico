@@ -7,6 +7,7 @@
 # - Delta_trasferimento = Tsolare - Tpdc
 # - ON  se Delta_trasferimento > C2_DELTA_ON
 # - OFF se Delta_trasferimento < C2_DELTA_OFF
+# - Stop aggiuntivo se la PDC sta lavorando in ACS e S1 < Tsolare
 # - Hard stop se S4 >= C2_HARD_STOP_TEMP
 #
 # Feedback NC opzionale:
@@ -80,6 +81,8 @@ def _check_c2_feedback(input_mgr, c2_command_on: bool):
 
 
 def run_once(sensor_mgr, actuator_mgr, input_mgr=None):
+    inputs = _get_input_snapshot(input_mgr)
+
     if state.manual_mode:
         manual_value = state.manual_relays.get('C2', False)
         actuator_mgr.set_relay('C2', manual_value)
@@ -125,6 +128,19 @@ def run_once(sensor_mgr, actuator_mgr, input_mgr=None):
     tsolare = (s2 + s3) / 2.0
     tpdc = (s4 + s5) / 2.0
     delta_transfer = tsolare - tpdc
+
+    # Se ACS e' attiva e i pannelli sono piu freddi del boiler solare,
+    # evita di trasferire ulteriore energia verso il boiler PDC.
+    if inputs.get('PDC_WORK_ACS', False) and s1 < tsolare:
+        actuator_mgr.set_relay('C2', config.SAFE_RELAY_STATE)
+        state.c2_on_state = False
+        _check_c2_feedback(input_mgr, False)
+        print(
+            "[C2] stop ACS: S1={:.1f} < Tsolare={:.1f} con PDC_WORK_ACS attivo".format(
+                s1, tsolare
+            )
+        )
+        return
 
     on_thresh = config.C2_DELTA_ON
     off_thresh = config.C2_DELTA_OFF

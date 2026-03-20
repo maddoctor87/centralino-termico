@@ -39,6 +39,7 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 ### Altri controlli
 - **C2 (trasferimento solare → PDC)**: `control_c2.py`
   - ON se la media del boiler solare (`S2/S3`) supera la media del boiler PDC (`S4/S5`) oltre hysteresis.
+  - Stop aggiuntivo se ACS e' attiva e `S1` scende sotto la media del boiler solare.
   - Hard stop invariato se `S4` supera la soglia di sicurezza.
   - Uscita: C2 (Q0.0).
 - **CR (ricircolo collettore)**: `control_recirc.py`
