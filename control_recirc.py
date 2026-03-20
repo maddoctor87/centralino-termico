@@ -14,6 +14,13 @@ def _hysteresis(current, value, on_thresh, off_thresh):
     return value >= on_thresh       # accendi sopra on_thresh
 
 
+def _average_defined(values):
+    valid = [value for value in values if value is not None]
+    if not valid:
+        return None
+    return sum(valid) / len(valid)
+
+
 def run_once(sensor_mgr, actuator_mgr):
     if state.manual_mode:
         actuator_mgr.set_relay('CR', state.manual_relays.get('CR', False))
@@ -28,7 +35,9 @@ def run_once(sensor_mgr, actuator_mgr):
         return
 
     tcol = min(valid)
-    s4   = state.temps.get('S4')
+    s4 = state.temps.get('S4')
+    s5 = state.temps.get('S5')
+    tpdc = _average_defined((s4, s5))
 
     # Emergenza: S4 alta o richiesta antilegionella via MQTT
     emerg = (s4 is not None and s4 >= config.CR_EMERG_TEMP) or state.antileg_request
@@ -59,6 +68,10 @@ def run_once(sensor_mgr, actuator_mgr):
         on_thresh  = config.CR_TARGET_EMERG  - config.CR_HYSTERESIS_EMERG
         off_thresh = config.CR_TARGET_EMERG
     else:
+        if tpdc is None or tpdc < config.CR_ENABLE_MIN_PDC_TEMP:
+            state.cr_on_state = False
+            actuator_mgr.set_relay('CR', False)
+            return
         on_thresh  = config.CR_TARGET_NORMAL - config.CR_HYSTERESIS_NORMAL
         off_thresh = config.CR_TARGET_NORMAL
 

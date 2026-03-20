@@ -38,10 +38,12 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 
 ### Altri controlli
 - **C2 (trasferimento solare → PDC)**: `control_c2.py`
-  - ON se delta_solare > delta_PDC + hysteresis, con hard stop.
+  - ON se la media del boiler solare (`S2/S3`) supera la media del boiler PDC (`S4/S5`) oltre hysteresis.
+  - Hard stop invariato se `S4` supera la soglia di sicurezza.
   - Uscita: C2 (Q0.0).
 - **CR (ricircolo collettore)**: `control_recirc.py`
-  - Hysteresis normale/emergenza, antilegionella timer.
+  - In normale parte solo se il boiler PDC (media `S4/S5`) e' almeno a 40 C.
+  - Poi mantiene il collettore a 45 C con isteresi; emergenza/antilegionella restano invariate.
   - Uscita: CR (Q0.1).
 - **Antilegionella**: In `control_panels.py`, ciclo C1 per pulizia.
 

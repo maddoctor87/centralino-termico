@@ -205,6 +205,7 @@ C2_HARD_STOP_TEMP = 85.0
 # ── Logiche CR ────────────────────────────────────────────────────────────────
 CR_TARGET_NORMAL = 45.0
 CR_HYSTERESIS_NORMAL = 4.0
+CR_ENABLE_MIN_PDC_TEMP = 40.0
 CR_TARGET_EMERG = 70.0
 CR_HYSTERESIS_EMERG = 3.0
 CR_EMERG_TEMP = 80.0

@@ -2,10 +2,11 @@
 # Controllo Pompa 2 / C2: trasferimento solare -> PDC.
 #
 # Logica:
-# - Delta_solare = ((S2 + S3) / 2) - S1
-# - Delta_pdc    = S4 - S5
-# - ON  se Delta_solare > Delta_pdc + C2_DELTA_ON
-# - OFF se Delta_solare < Delta_pdc + C2_DELTA_OFF
+# - Tsolare = media boiler solare = ((S2 + S3) / 2)
+# - Tpdc    = media boiler PDC    = ((S4 + S5) / 2)
+# - Delta_trasferimento = Tsolare - Tpdc
+# - ON  se Delta_trasferimento > C2_DELTA_ON
+# - OFF se Delta_trasferimento < C2_DELTA_OFF
 # - Hard stop se S4 >= C2_HARD_STOP_TEMP
 #
 # Feedback NC opzionale:
@@ -118,18 +119,21 @@ def run_once(sensor_mgr, actuator_mgr, input_mgr=None):
         _check_c2_feedback(input_mgr, False)
         return
 
-    # Calcolo del delta solare vs PDC
-    delta_solare = ((s2 + s3) / 2.0) - s1
-    delta_pdc = s4 - s5
+    # Trasferimento diretto boiler solare -> boiler PDC.
+    # La logica di emergenza resta invariata: sensori validi richiesti e hard
+    # stop su S4 alto.
+    tsolare = (s2 + s3) / 2.0
+    tpdc = (s4 + s5) / 2.0
+    delta_transfer = tsolare - tpdc
 
-    on_thresh = delta_pdc + config.C2_DELTA_ON
-    off_thresh = delta_pdc + config.C2_DELTA_OFF
+    on_thresh = config.C2_DELTA_ON
+    off_thresh = config.C2_DELTA_OFF
 
     # Hysteresis
     if state.c2_on_state:
-        new_state = delta_solare > off_thresh
+        new_state = delta_transfer > off_thresh
     else:
-        new_state = delta_solare > on_thresh
+        new_state = delta_transfer > on_thresh
 
     actuator_mgr.set_relay('C2', new_state)
     state.c2_on_state = bool(new_state)
@@ -138,9 +142,9 @@ def run_once(sensor_mgr, actuator_mgr, input_mgr=None):
 
     print(
         "[C2] S1={:.1f} S2={:.1f} S3={:.1f} S4={:.1f} S5={:.1f} "
-        "delta_solare={:.1f} delta_pdc={:.1f} on_thr={:.1f} off_thr={:.1f} state={}".format(
+        "tsolare={:.1f} tpdc={:.1f} delta_transfer={:.1f} on_thr={:.1f} off_thr={:.1f} state={}".format(
             s1, s2, s3, s4, s5,
-            delta_solare, delta_pdc, on_thresh, off_thresh, new_state
+            tsolare, tpdc, delta_transfer, on_thresh, off_thresh, new_state
         )
     )
 
