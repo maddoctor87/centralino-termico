@@ -127,9 +127,9 @@ const SENSOR_ALARM_MAP = {
   S7: "ALARM_SENSORS_CR",
 };
 
-const WILO_STOP_DUTY_PCT = 95;
-const WILO_MIN_RUN_DUTY_PCT = 85;
-const WILO_MAX_RUN_DUTY_PCT = 5;
+const WILO_STOP_DUTY_PCT = 20;
+const WILO_MIN_RUN_DUTY_PCT = 23;
+const WILO_MAX_RUN_DUTY_PCT = 95;
 
 function hasOwn(obj, key) {
   return !!obj && Object.prototype.hasOwnProperty.call(obj, key);
@@ -143,22 +143,22 @@ function clampPct(value) {
 
 function normalizeWiloCommandPct(value) {
   const duty = clampPct(value);
-  if (duty <= 0 || duty >= WILO_STOP_DUTY_PCT) return WILO_STOP_DUTY_PCT;
-  return Math.max(WILO_MAX_RUN_DUTY_PCT, Math.min(WILO_MIN_RUN_DUTY_PCT, duty));
+  if (duty <= WILO_STOP_DUTY_PCT) return WILO_STOP_DUTY_PCT;
+  return Math.max(WILO_MIN_RUN_DUTY_PCT, Math.min(WILO_MAX_RUN_DUTY_PCT, duty));
 }
 
 function getWiloSpeedPct(wiloDutyPct) {
   const duty = clampPct(wiloDutyPct);
-  if (duty <= 0 || duty >= WILO_STOP_DUTY_PCT) return 0;
+  if (duty <= WILO_STOP_DUTY_PCT) return 0;
 
   const boundedDuty = Math.max(
-    WILO_MAX_RUN_DUTY_PCT,
-    Math.min(WILO_MIN_RUN_DUTY_PCT, duty),
+    WILO_MIN_RUN_DUTY_PCT,
+    Math.min(WILO_MAX_RUN_DUTY_PCT, duty),
   );
   const speedPct =
     1 +
-    ((WILO_MIN_RUN_DUTY_PCT - boundedDuty) * 99) /
-      (WILO_MIN_RUN_DUTY_PCT - WILO_MAX_RUN_DUTY_PCT);
+    ((boundedDuty - WILO_MIN_RUN_DUTY_PCT) * 99) /
+      (WILO_MAX_RUN_DUTY_PCT - WILO_MIN_RUN_DUTY_PCT);
   return Math.round(speedPct);
 }
 
@@ -176,7 +176,7 @@ function getWiloState(wiloDutyPct) {
     };
   }
 
-  if (duty >= WILO_STOP_DUTY_PCT) {
+  if (duty <= WILO_STOP_DUTY_PCT) {
     return {
       duty,
       speedPct: 0,
@@ -451,8 +451,8 @@ function RuntimeStatusCard() {
         del portale.
       </div>
       <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-        C1 usa l'uscita PWM <strong>A0.5</strong> con duty Wilo PWM2 invertito:
-        95% standby, 5% massima velocità.
+        C1 usa l'uscita PWM <strong>A0.5</strong> con duty Wilo PWM2 diretto:
+        20% standby, 23% minima marcia, 95% massima velocità.
       </div>
     </div>
   );
@@ -992,7 +992,7 @@ export default function CentraleTermicaACSPage() {
       >
         <ActuatorCard
           label="A0.5 – Pompa pannelli"
-          sublabel="Wilo PWM2 invertito (95%=standby, 5%=max)"
+          sublabel="Wilo PWM2 diretto (20%=standby, 95%=max)"
           active={c1WiloState.running}
         >
           {c1Latch && (

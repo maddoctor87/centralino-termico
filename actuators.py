@@ -158,13 +158,13 @@ class WiloPWM2Output:
         except Exception:
             return config.C1_WILO_STANDBY_DUTY_PCT
 
-        if wilo_duty_pct <= 0:
+        if wilo_duty_pct <= config.C1_WILO_STANDBY_DUTY_PCT:
             return config.C1_WILO_STANDBY_DUTY_PCT
-        if wilo_duty_pct >= config.C1_WILO_STANDBY_DUTY_PCT:
-            return config.C1_WILO_STANDBY_DUTY_PCT
+        if wilo_duty_pct >= config.C1_WILO_MAX_SPEED_DUTY_PCT:
+            return config.C1_WILO_MAX_SPEED_DUTY_PCT
         return max(
-            config.C1_WILO_MAX_SPEED_DUTY_PCT,
-            min(config.C1_WILO_MIN_WORK_DUTY_PCT, wilo_duty_pct),
+            config.C1_WILO_MIN_WORK_DUTY_PCT,
+            min(config.C1_WILO_MAX_SPEED_DUTY_PCT, wilo_duty_pct),
         )
 
     def _raw_pwm_12bit(self, wilo_duty_pct):

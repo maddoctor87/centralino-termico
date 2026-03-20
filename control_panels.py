@@ -13,12 +13,12 @@
 # - Override anti-stagnazione se S1 >= C1_STAGNATION_TEMP e Thigh >= C1_THIGH_STOP
 #
 # PWM2 Wilo:
-# - wilo_duty_pct basso => velocità alta
-# - wilo_duty_pct alto  => velocità bassa / standby
-# - qui usiamo:
-#     5%   = max speed
-#     85%  = min working speed
-#     95%  = stop / standby
+# - wilo_duty_pct basso  => standby / stop
+# - wilo_duty_pct alto   => velocità più alta
+# - taratura reale:
+#     20%  = stop / standby
+#     23%  = min working speed
+#     95%  = max speed
 
 import uasyncio as asyncio
 import config
@@ -120,7 +120,7 @@ def _brake_factor(thigh: float) -> float:
 def _speed_pct_from_delta(delta_c: float) -> int:
     """
     Mappa il delta termico in una "richiesta velocità" classica 0..100.
-    Poi questa verrà convertita nel wilo_duty_pct PWM2 invertito.
+    Poi questa verrà convertita nel wilo_duty_pct PWM2 diretto.
     """
     speed_pct_min = _get_setpoint("c1_speed_pct_min", config.C1_SPEED_PCT_MIN)
     speed_pct_max = _get_setpoint("c1_speed_pct_max", config.C1_SPEED_PCT_MAX)
@@ -136,8 +136,8 @@ def speed_pct_to_wilo_duty_pct(speed_pct: int) -> int:
     """
     Converte una richiesta velocità "umana" 0..100 nel duty PWM2 Wilo.
     Regola usata:
-    - 0%   -> 95%  (stop / standby)
-    - 1-100% -> 85..5% (min..max)
+    - 0%   -> 20%  (stop / standby)
+    - 1-100% -> 23..95% (min..max)
     """
     if speed_pct <= 0:
         return config.C1_WILO_STANDBY_DUTY_PCT
@@ -153,8 +153,8 @@ def speed_pct_to_wilo_duty_pct(speed_pct: int) -> int:
     return int(
         round(
             max(
-                config.C1_WILO_MAX_SPEED_DUTY_PCT,
-                min(config.C1_WILO_MIN_WORK_DUTY_PCT, wilo_duty_pct),
+                config.C1_WILO_MIN_WORK_DUTY_PCT,
+                min(config.C1_WILO_MAX_SPEED_DUTY_PCT, wilo_duty_pct),
             )
         )
     )
@@ -180,12 +180,12 @@ def validate_c1_wilo_pwm2_mapping():
     if samples[100] != config.C1_WILO_MAX_SPEED_DUTY_PCT:
         raise AssertionError('100% must map to {}'.format(config.C1_WILO_MAX_SPEED_DUTY_PCT))
     if any(
-        value < config.C1_WILO_MAX_SPEED_DUTY_PCT or value > config.C1_WILO_MIN_WORK_DUTY_PCT
+        value < config.C1_WILO_MIN_WORK_DUTY_PCT or value > config.C1_WILO_MAX_SPEED_DUTY_PCT
         for value in active_values
     ):
         raise AssertionError('active branch generated out-of-range Wilo duty values')
-    if any(active_values[idx] < active_values[idx + 1] for idx in range(len(active_values) - 1)):
-        raise AssertionError('active branch is not inverted')
+    if any(active_values[idx] > active_values[idx + 1] for idx in range(len(active_values) - 1)):
+        raise AssertionError('active branch is not increasing')
     if speed_pct_to_wilo_duty_pct(-10) != config.C1_WILO_STANDBY_DUTY_PCT:
         raise AssertionError('negative speed must map to standby')
 
@@ -195,8 +195,8 @@ def validate_c1_wilo_pwm2_mapping():
 def _compute_c1_wilo_duty_pct(s1: float, s2: float, s3: float, s4: float, active: bool) -> int:
     """
     Restituisce il wilo_duty_pct PWM2 finale per la pompa C1.
-    95 = stop / standby
-    5..85 = modulazione valida Wilo PWM2
+    20 = stop / standby
+    23..95 = modulazione valida Wilo PWM2
     """
     tavg = (s2 + s3) / 2.0
     thigh = max(s2, s3)
@@ -240,10 +240,12 @@ def run_once(sensor_mgr, actuator_mgr):
             config.C1_WILO_STANDBY_DUTY_PCT,
         )
         actuator_mgr.set_c1_wilo_duty(manual_wilo_duty_pct)
-        _set_c1_active(0 < int(manual_wilo_duty_pct) < config.C1_WILO_STANDBY_DUTY_PCT)
+        _set_c1_active(int(manual_wilo_duty_pct) > config.C1_WILO_STANDBY_DUTY_PCT)
         return
 
-    temps = sensor_mgr.snapshot()
+    # Use effective temperatures from global state so C1 can run on the
+    # temporary MQTT fallback until the local DS2482 is installed.
+    temps = state.snapshot().get("temps", {})
     s1 = temps.get("S1")
     s2 = temps.get("S2")
     s3 = temps.get("S3")

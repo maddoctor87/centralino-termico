@@ -177,10 +177,14 @@ AUTO_SCAN_ROM_ON_BOOT = False
 
 # ── Logiche C1 ────────────────────────────────────────────────────────────────
 # speed_pct = richiesta velocità umana 0..100
-# wilo_duty_pct = duty finale PWM2 Wilo invertito
-C1_WILO_MAX_SPEED_DUTY_PCT = 5
-C1_WILO_MIN_WORK_DUTY_PCT = 85
-C1_WILO_STANDBY_DUTY_PCT = 95
+# wilo_duty_pct = duty finale PWM2 Wilo diretto.
+# Taratura reale sul campo:
+# - 20% spegne la pompa
+# - 23% e' la minima marcia affidabile
+# - 95% e' la massima richiesta utile
+C1_WILO_MAX_SPEED_DUTY_PCT = 95
+C1_WILO_MIN_WORK_DUTY_PCT = 23
+C1_WILO_STANDBY_DUTY_PCT = 20
 C1_DELTA_PWM_MIN = 2.0
 C1_DELTA_PWM_MAX = 10.0
 C1_SPEED_PCT_MIN = 10

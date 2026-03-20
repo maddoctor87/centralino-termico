@@ -41,8 +41,8 @@ SENSOR_DESCRIPTIONS = {
 ROM_LABELS = {
     # "28ff641d7216035c": "S1",
     "280333bb00000088":"S1",
-    "28f88cbc000000a4":"S2",
-    "284affba000000e7":"S3",
+    "28f88cbc000000a4":"S3",
+    "284affba000000e7":"S2",
     "286ceebe0000005c":"S4",
     "28b470bb000000ad":"S5",
     "28fbebbc000000bd":"S6",

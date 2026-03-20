@@ -27,7 +27,7 @@ class ACSStore:
         "ts": None,
         "temps": {k: None for k in ("S1", "S2", "S3", "S4", "S5", "S6", "S7")},
         "inputs": {},
-        "c1_wilo_duty_pct": 95,
+        "c1_wilo_duty_pct": 20,
         "c1_active": False,
         "c2_on": False,
         "cr_on": False,
@@ -42,7 +42,7 @@ class ACSStore:
         "relay_available": {k: False for k in ("C2", "PISCINA_PUMP", "HEAT_PUMP", "CR", "VALVE", "GAS_ENABLE", "PDC_CMD_START_ACR")},
         "manual_mode": False,
         "manual_relays": {k: False for k in ("C2", "PISCINA_PUMP", "HEAT_PUMP", "CR", "VALVE", "GAS_ENABLE", "PDC_CMD_START_ACR")},
-        "manual_c1_wilo_duty_pct": 95,
+        "manual_c1_wilo_duty_pct": 20,
         "pool_just_filled": False,
         "setpoints": {
             "solar_target_c": 55.0,

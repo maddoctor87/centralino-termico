@@ -10,7 +10,7 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 ## 2. Logiche di controllo (Blocks)
 ### Block 1: Controllo pannelli solari (C1)
 - **Modulo**: `control_panels.py`
-- **Scopo**: Regolare la pompa C1 con duty Wilo PWM2 invertito per ottimizzare raccolta calore dai pannelli, bilanciando delta temperature.
+- **Scopo**: Regolare la pompa C1 con duty Wilo PWM2 diretto per ottimizzare raccolta calore dai pannelli, bilanciando delta temperature.
 - **Logica** (`control_panels_task`):
   - Calcola `delta_solare = S1 - S2` (pannelli vs boiler solare).
   - Se delta > soglia minima, attiva C1 con wilo duty basato su friction factor e hysteresis.
