@@ -219,6 +219,8 @@ ANTILEGIONELLA_OK_SECONDS = 3600
 # La logica è schedulata in main.py e governa le uscite ausiliarie fuori dal manuale.
 POOL_JUST_FILLED = False
 POOL_C2_GAS_BOOST_AFTER_S = 3600
+PDC_HELP_GAS_TOP_GAP_C = 8.0
+PDC_HELP_GAS_STRAT_DELTA_C = 10.0
 GAS_OFF_DELAY_S = 120
 VALVE_OFF_DELAY_S = 120
 PDC_C2_CMD_HOLD_S = 30

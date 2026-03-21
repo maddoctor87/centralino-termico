@@ -75,6 +75,20 @@ class Block2Controller:
             return False
         return s5 >= self._get_pdc_target_c()
 
+    def _pdc_help_gas_needed(self):
+        s4 = state.temps.get('S4')
+        s5 = state.temps.get('S5')
+        if s4 is None or s5 is None:
+            return True
+
+        target = self._get_pdc_target_c()
+        top_gap = target - s4
+        strat_delta = abs(s4 - s5)
+        return (
+            top_gap >= config.PDC_HELP_GAS_TOP_GAP_C or
+            strat_delta >= config.PDC_HELP_GAS_STRAT_DELTA_C
+        )
+
     def _solar_critical_for_pdc_dump(self):
         s2 = state.temps.get('S2')
         s3 = state.temps.get('S3')
@@ -115,6 +129,8 @@ class Block2Controller:
 
         if inputs.get('PDC_HELP_REQUEST', False):
             if self._pdc_boiler_satisfied():
+                return False
+            if not self._pdc_help_gas_needed():
                 return False
             if self._prefer_solar_over_gas(inputs):
                 return False
