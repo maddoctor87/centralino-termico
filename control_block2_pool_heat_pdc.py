@@ -35,6 +35,18 @@ class Block2Controller:
     def _publish_outputs(self, outputs):
         state.set_block2_outputs(outputs)
 
+    def _solar_can_help_pdc(self):
+        s2 = state.temps.get('S2')
+        s3 = state.temps.get('S3')
+        s5 = state.temps.get('S5')
+        if s2 is None or s3 is None or s5 is None:
+            return False
+        tsolare = (s2 + s3) / 2.0
+        return tsolare > s5
+
+    def _prefer_c2_over_gas(self, inputs):
+        return inputs.get('PDC_HELP_REQUEST', False) and self._solar_can_help_pdc()
+
     def _set_manual_outputs(self, actuator_mgr):
         outputs = {
             'gas_enable': bool(state.manual_relays.get('GAS_ENABLE', False)),
@@ -52,6 +64,8 @@ class Block2Controller:
 
     def _should_activate_gas(self, inputs):
         if inputs.get('PDC_HELP_REQUEST', False):
+            if self._prefer_c2_over_gas(inputs):
+                return False
             return True
 
         if inputs.get('PDC_WORK_ACS', False) and (
@@ -109,6 +123,7 @@ class Block2Controller:
             return
 
         now = time.time()
+        prefer_c2_help = self._prefer_c2_over_gas(inputs)
 
         gas_on = self._should_activate_gas(inputs)
         valve_on = self._should_activate_valve(inputs)
@@ -116,7 +131,10 @@ class Block2Controller:
         heat_pump_on = self._should_activate_heat_pump(inputs)
         piscina_pump_on = self._should_activate_piscina_pump(inputs)
 
-        if gas_on:
+        if prefer_c2_help:
+            self.gas_off_timer = 0
+            gas_on = False
+        elif gas_on:
             self.gas_off_timer = now + config.GAS_OFF_DELAY_S
         elif now < self.gas_off_timer:
             gas_on = True

@@ -21,6 +21,18 @@ def _average_defined(values):
     return sum(valid) / len(valid)
 
 
+def _pdc_enable_ok(current, tpdc):
+    if tpdc is None:
+        return False
+
+    on_thresh = config.CR_ENABLE_MIN_PDC_TEMP
+    off_thresh = config.CR_ENABLE_MIN_PDC_TEMP - config.CR_ENABLE_HYSTERESIS_PDC
+
+    if current:
+        return tpdc >= off_thresh
+    return tpdc >= on_thresh
+
+
 def run_once(sensor_mgr, actuator_mgr):
     if state.manual_mode:
         actuator_mgr.set_relay('CR', state.manual_relays.get('CR', False))
@@ -68,7 +80,7 @@ def run_once(sensor_mgr, actuator_mgr):
         on_thresh  = config.CR_TARGET_EMERG  - config.CR_HYSTERESIS_EMERG
         off_thresh = config.CR_TARGET_EMERG
     else:
-        if tpdc is None or tpdc < config.CR_ENABLE_MIN_PDC_TEMP:
+        if not _pdc_enable_ok(state.cr_on_state, tpdc):
             state.cr_on_state = False
             actuator_mgr.set_relay('CR', False)
             return

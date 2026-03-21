@@ -7,7 +7,9 @@
 # - Delta_trasferimento = Tsolare - Tpdc
 # - ON  se Delta_trasferimento > C2_DELTA_ON
 # - OFF se Delta_trasferimento < C2_DELTA_OFF
+# - Override aiuto PDC: se PDC_HELP_REQUEST e Tsolare > S5, forza C2 ON
 # - Stop aggiuntivo se la PDC sta lavorando in ACS e S1 < Tsolare
+#   solo fuori dall'override aiuto PDC
 # - Hard stop se S4 >= C2_HARD_STOP_TEMP
 #
 # Feedback NC opzionale:
@@ -128,6 +130,20 @@ def run_once(sensor_mgr, actuator_mgr, input_mgr=None):
     tsolare = (s2 + s3) / 2.0
     tpdc = (s4 + s5) / 2.0
     delta_transfer = tsolare - tpdc
+    help_delta = tsolare - s5
+
+    # Se la PDC chiede aiuto e il boiler solare e' gia' piu' caldo del fondo
+    # boiler PDC, usa subito C2 come prima scelta invece del gas.
+    if inputs.get('PDC_HELP_REQUEST', False) and help_delta > 0:
+        actuator_mgr.set_relay('C2', True)
+        state.c2_on_state = True
+        _check_c2_feedback(input_mgr, True)
+        print(
+            "[C2] aiuto PDC da boiler solare: Tsolare={:.1f} S5={:.1f} delta_help={:.1f} state=True".format(
+                tsolare, s5, help_delta
+            )
+        )
+        return
 
     # Se ACS e' attiva e i pannelli sono piu freddi del boiler solare,
     # evita di trasferire ulteriore energia verso il boiler PDC.
@@ -158,9 +174,9 @@ def run_once(sensor_mgr, actuator_mgr, input_mgr=None):
 
     print(
         "[C2] S1={:.1f} S2={:.1f} S3={:.1f} S4={:.1f} S5={:.1f} "
-        "tsolare={:.1f} tpdc={:.1f} delta_transfer={:.1f} on_thr={:.1f} off_thr={:.1f} state={}".format(
+        "tsolare={:.1f} tpdc={:.1f} delta_transfer={:.1f} delta_help={:.1f} on_thr={:.1f} off_thr={:.1f} state={}".format(
             s1, s2, s3, s4, s5,
-            tsolare, tpdc, delta_transfer, on_thresh, off_thresh, new_state
+            tsolare, tpdc, delta_transfer, help_delta, on_thresh, off_thresh, new_state
         )
     )
 

@@ -25,6 +25,7 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 - **Stato attuale**: attivo e schedulato nel `main.py` della repo corrente.
 - **Logica target** (`Block2Controller.run_once`):
   - **GAS_ENABLE**: ON se PDC_HELP_REQUEST, o PDC lavora su C1 + richiesta piscina/riscaldamento, o boost dopo lavoro continuo C2 su piscina, o piscina appena riempita (placeholder).
+  - **Priorita aiuto PDC da solare**: se `PDC_HELP_REQUEST` e la media boiler solare (`S2/S3`) e' maggiore di `S5` (fondo boiler PDC), il firmware preferisce `C2` al gas e forza `GAS_ENABLE=OFF` senza trattenere il delay di spegnimento; in questo ramo il gas resta ultima risorsa.
   - **VALVE**: ON su richiesta piscina o riscaldamento (valvola EVIE, devia flusso).
   - **PDC_CMD_START_ACR**: ON se PDC libero da C1 + richiesta piscina/riscaldamento (comanda il lavoro ACR).
   - **HEAT_PUMP**: ON su richiesta aiuto riscaldamento.
@@ -39,11 +40,13 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 ### Altri controlli
 - **C2 (trasferimento solare → PDC)**: `control_c2.py`
   - ON se la media del boiler solare (`S2/S3`) supera la media del boiler PDC (`S4/S5`) oltre hysteresis.
+  - Override aiuto PDC: se `PDC_HELP_REQUEST` e la media del boiler solare (`S2/S3`) supera `S5`, `C2` viene forzata ON anche fuori dalla logica hysteresis normale.
   - Stop aggiuntivo se ACS e' attiva e `S1` scende sotto la media del boiler solare.
   - Hard stop invariato se `S4` supera la soglia di sicurezza.
   - Uscita: C2 (Q0.0).
 - **CR (ricircolo collettore)**: `control_recirc.py`
   - In normale parte solo se il boiler PDC (media `S4/S5`) e' almeno a 40 C.
+  - L'abilitazione da boiler PDC ha isteresi dedicata: se CR e' gia' attivo resta abilitato fino a 38 C.
   - Poi mantiene il collettore a 45 C con isteresi; emergenza/antilegionella restano invariate.
   - Uscita: CR (Q0.1).
 - **Antilegionella**: In `control_panels.py`, ciclo C1 per pulizia.
