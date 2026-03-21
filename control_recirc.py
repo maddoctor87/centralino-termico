@@ -10,8 +10,8 @@ import state
 
 def _hysteresis(current, value, on_thresh, off_thresh):
     if current:
-        return value < off_thresh   # spegni sotto off_thresh
-    return value >= on_thresh       # accendi sopra on_thresh
+        return value < off_thresh   # resta acceso finche' non raggiunge il target
+    return value <= on_thresh       # accendi quando scende sotto la soglia bassa
 
 
 def _average_defined(values):

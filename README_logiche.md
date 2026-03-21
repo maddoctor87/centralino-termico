@@ -50,7 +50,7 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 - **CR (ricircolo collettore)**: `control_recirc.py`
   - In normale parte solo se il boiler PDC (media `S4/S5`) e' almeno a 40 C.
   - L'abilitazione da boiler PDC ha isteresi dedicata: se CR e' gia' attivo resta abilitato fino a 38 C.
-  - Poi mantiene il collettore a 45 C con isteresi.
+  - Poi mantiene il collettore a 45 C con isteresi: si accende quando `min(S6,S7)` scende a 41 C o meno e si spegne a 45 C.
   - In antilegionella usa il setpoint `antileg_target_c`, resta attiva finche' `min(S6,S7)` raggiunge il target per 3600 secondi e poi chiude automaticamente la richiesta mantenendo l'ultimo esito `OK`.
   - Uscita: CR (Q0.1).
 - **Antilegionella**: richiesta manuale o schedulata dal portale; esecuzione nel firmware tramite `control_recirc.py`, con supporto di `control_c2.py` e `control_block2_pool_heat_pdc.py` per scegliere tra solare e gas + PDC ACR.
