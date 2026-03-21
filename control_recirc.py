@@ -33,6 +33,15 @@ def _pdc_enable_ok(current, tpdc):
     return tpdc >= on_thresh
 
 
+def _get_antileg_target_c():
+    getter = getattr(state, "get_setpoint", None)
+    if callable(getter):
+        value = getter("antileg_target_c", None)
+        if value is not None:
+            return float(value)
+    return float(config.SETPOINTS["antileg_target_c"]["default"])
+
+
 def run_once(sensor_mgr, actuator_mgr):
     if state.manual_mode:
         actuator_mgr.set_relay('CR', state.manual_relays.get('CR', False))
@@ -51,34 +60,42 @@ def run_once(sensor_mgr, actuator_mgr):
     s5 = state.temps.get('S5')
     tpdc = _average_defined((s4, s5))
 
+    antileg_mode = bool(state.antileg_request)
+
     # Emergenza: S4 alta o richiesta antilegionella via MQTT
-    emerg = (s4 is not None and s4 >= config.CR_EMERG_TEMP) or state.antileg_request
+    emerg = (s4 is not None and s4 >= config.CR_EMERG_TEMP) or antileg_mode
     state.cr_emerg_mode = emerg
 
     # Gestione timer antilegionella
-    if state.antileg_request:
-        if tcol >= config.CR_TARGET_EMERG:
+    if antileg_mode:
+        target_c = _get_antileg_target_c()
+        if tcol >= target_c:
             if state.antileg_hold_start is None:
                 state.antileg_hold_start = time.time()
             elapsed = time.time() - state.antileg_hold_start
             if elapsed >= config.ANTILEGIONELLA_OK_SECONDS:
                 if not state.antileg_ok:
                     print('[CR] antilegionella OK ({}s)'.format(int(elapsed)))
-                state.antileg_ok    = True
+                state.antileg_ok = True
                 state.antileg_ok_ts = time.time()
+                state.antileg_request = False
+                state.antileg_hold_start = None
+                antileg_mode = False
+                emerg = s4 is not None and s4 >= config.CR_EMERG_TEMP
+                state.cr_emerg_mode = emerg
             else:
                 state.antileg_ok = False
         else:
             state.antileg_hold_start = None
-            state.antileg_ok         = False
+            state.antileg_ok = False
     else:
         state.antileg_hold_start = None
-        state.antileg_ok         = False
 
     # Soglie isteresi in base alla modalità
     if emerg:
-        on_thresh  = config.CR_TARGET_EMERG  - config.CR_HYSTERESIS_EMERG
-        off_thresh = config.CR_TARGET_EMERG
+        target_c = _get_antileg_target_c() if antileg_mode else config.CR_TARGET_EMERG
+        on_thresh = target_c - config.CR_HYSTERESIS_EMERG
+        off_thresh = target_c
     else:
         if not _pdc_enable_ok(state.cr_on_state, tpdc):
             state.cr_on_state = False

@@ -85,7 +85,13 @@ def _on_cmd(topic, msg):
             return
 
         if 'antileg_request' in d:
-            state.antileg_request = bool(d['antileg_request'])
+            requested = bool(d['antileg_request'])
+            if requested and not state.antileg_request:
+                state.antileg_ok = False
+                state.antileg_hold_start = None
+            if not requested:
+                state.antileg_hold_start = None
+            state.antileg_request = requested
             print('[mqtt] antileg_request =', state.antileg_request)
 
         if 'manual_mode' in d:

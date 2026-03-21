@@ -279,6 +279,7 @@ device_bridge: DeviceMQTTBridge | None = None
 # --- ACS (Centrale Termica) ---
 acs_store = acs_module.ACSStore()
 acs_bridge: acs_module.ACSMQTTBridge | None = None
+acs_antileg_scheduler: acs_module.ACSAntilegScheduler | None = None
 energy_guard_thread: threading.Thread | None = None
 energy_guard_stop = threading.Event()
 energy_history_thread: threading.Thread | None = None
@@ -300,6 +301,10 @@ STAFF_WIFI_ROLES = {"superad", "admin", "reception", "maintenance", "cleaning"}
 THERMAL_COMMAND_TOPIC = os.environ.get("THERMAL_COMMAND_TOPIC", "itineris/thermal/command")
 THERMAL_CONTROL_ROLES = ["superad", "admin", "maintenance"]
 FANCOIL_COMMAND_TOPIC = os.environ.get("FANCOIL_COMMAND_TOPIC", "itineris/fancoil/command")
+
+
+def _publish_acs_cmd(payload: Dict[str, Any]) -> bool:
+    return bool(acs_bridge and acs_bridge.publish_cmd(payload))
 
 THERMAL_FC_PANEL_MAP: Dict[int, int] = {
     1: 30,
@@ -3441,9 +3446,16 @@ def _startup():
 
     # --- ACS bridge ---
     global acs_bridge
+    global acs_antileg_scheduler
     _acs_br = acs_module.ACSMQTTBridge(acs_store, DEVICE_MQTT_SETTINGS)
     acs_bridge = _acs_br
     _acs_br.start()
+    acs_antileg_scheduler = acs_module.ACSAntilegScheduler(
+        _publish_acs_cmd,
+        acs_store.snapshot,
+        APP_TIMEZONE,
+    )
+    acs_antileg_scheduler.start()
 
     global energy_guard_thread
     global energy_history_thread
@@ -3473,6 +3485,8 @@ def _startup():
 def _shutdown():
     if device_bridge:
         device_bridge.stop()
+    if acs_antileg_scheduler:
+        acs_antileg_scheduler.stop()
     if acs_bridge:
         acs_bridge.stop()
     if energy_guard_thread:
@@ -3489,11 +3503,31 @@ def _shutdown():
 @app.get("/api/acs/state")
 def acs_get_state(user=Depends(require_role(acs_module.ACS_ROLES))):
     """Snapshot completo stato ESP32 ACS (temperature, attuatori, allarmi, antileg)."""
-    return acs_store.snapshot()
+    data = acs_store.snapshot()
+    data["antileg_schedule"] = (
+        acs_antileg_scheduler.snapshot()
+        if acs_antileg_scheduler
+        else {
+            "enabled": False,
+            "weekday": 6,
+            "weekday_label": "Domenica",
+            "time_hhmm": "03:00",
+            "next_run_at": None,
+            "last_trigger_at": None,
+            "last_result": None,
+        }
+    )
+    return data
 
 
 class ACSAntilegIn(BaseModel):
     request: bool
+
+
+class ACSAntilegScheduleIn(BaseModel):
+    enabled: bool
+    weekday: int = Field(ge=0, le=6)
+    time_hhmm: str
 
 
 @app.post("/api/acs/antileg")
@@ -3505,6 +3539,21 @@ def acs_set_antileg(body: ACSAntilegIn, user=Depends(require_role(acs_module.ACS
     if not ok:
         raise HTTPException(status_code=503, detail="Publish MQTT fallito")
     return {"ok": True, "antileg_request": body.request}
+
+
+@app.post("/api/acs/antileg-schedule")
+def acs_set_antileg_schedule(body: ACSAntilegScheduleIn, user=Depends(require_role(acs_module.ACS_ROLES))):
+    if not acs_antileg_scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler antilegionella non avviato")
+    try:
+        schedule = acs_antileg_scheduler.update_config(
+            enabled=body.enabled,
+            weekday=body.weekday,
+            time_hhmm=body.time_hhmm,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "antileg_schedule": schedule}
 
 
 class ACSManualModeIn(BaseModel):

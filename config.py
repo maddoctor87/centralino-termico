@@ -201,6 +201,7 @@ C1_LATCH_RESET_TEMP = 70.0
 C2_DELTA_ON = 5.0
 C2_DELTA_OFF = 3.0
 C2_HARD_STOP_TEMP = 85.0
+PDC_HELP_SOLAR_DUMP_TEMP = 70.0
 
 # ── Logiche CR ────────────────────────────────────────────────────────────────
 CR_TARGET_NORMAL = 45.0

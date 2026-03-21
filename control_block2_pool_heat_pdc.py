@@ -35,6 +35,22 @@ class Block2Controller:
     def _publish_outputs(self, outputs):
         state.set_block2_outputs(outputs)
 
+    def _get_antileg_target_c(self):
+        getter = getattr(state, 'get_setpoint', None)
+        if callable(getter):
+            value = getter('antileg_target_c', None)
+            if value is not None:
+                return float(value)
+        return float(config.SETPOINTS['antileg_target_c']['default'])
+
+    def _get_pdc_target_c(self):
+        getter = getattr(state, 'get_setpoint', None)
+        if callable(getter):
+            value = getter('pdc_target_c', None)
+            if value is not None:
+                return float(value)
+        return float(config.SETPOINTS['pdc_target_c']['default'])
+
     def _solar_can_help_pdc(self):
         s2 = state.temps.get('S2')
         s3 = state.temps.get('S3')
@@ -44,8 +60,39 @@ class Block2Controller:
         tsolare = (s2 + s3) / 2.0
         return tsolare > s5
 
-    def _prefer_c2_over_gas(self, inputs):
-        return inputs.get('PDC_HELP_REQUEST', False) and self._solar_can_help_pdc()
+    def _solar_ready_for_antileg(self):
+        s2 = state.temps.get('S2')
+        s3 = state.temps.get('S3')
+        s5 = state.temps.get('S5')
+        if s2 is None or s3 is None or s5 is None:
+            return False
+        tsolare = (s2 + s3) / 2.0
+        return tsolare > s5 and tsolare >= self._get_antileg_target_c()
+
+    def _pdc_boiler_satisfied(self):
+        s5 = state.temps.get('S5')
+        if s5 is None:
+            return False
+        return s5 >= self._get_pdc_target_c()
+
+    def _solar_critical_for_pdc_dump(self):
+        s2 = state.temps.get('S2')
+        s3 = state.temps.get('S3')
+        s5 = state.temps.get('S5')
+        if s2 is None or s3 is None or s5 is None:
+            return False
+        tsolare = (s2 + s3) / 2.0
+        thigh = max(s2, s3)
+        return tsolare > s5 and thigh >= config.PDC_HELP_SOLAR_DUMP_TEMP
+
+    def _prefer_solar_over_gas(self, inputs):
+        if state.antileg_request:
+            return self._solar_ready_for_antileg()
+        if not inputs.get('PDC_HELP_REQUEST', False):
+            return False
+        if self._pdc_boiler_satisfied():
+            return False
+        return self._solar_critical_for_pdc_dump()
 
     def _set_manual_outputs(self, actuator_mgr):
         outputs = {
@@ -63,8 +110,13 @@ class Block2Controller:
         self._publish_outputs(outputs)
 
     def _should_activate_gas(self, inputs):
+        if state.antileg_request:
+            return not self._solar_ready_for_antileg()
+
         if inputs.get('PDC_HELP_REQUEST', False):
-            if self._prefer_c2_over_gas(inputs):
+            if self._pdc_boiler_satisfied():
+                return False
+            if self._prefer_solar_over_gas(inputs):
                 return False
             return True
 
@@ -99,6 +151,11 @@ class Block2Controller:
         return False
 
     def _should_cmd_pdc_c2(self, inputs):
+        if state.antileg_request:
+            if self._solar_ready_for_antileg():
+                return False
+            return not inputs.get('PDC_WORK_ACS', False)
+
         if inputs.get('PDC_WORK_ACS', False):
             return False
 
@@ -123,7 +180,8 @@ class Block2Controller:
             return
 
         now = time.time()
-        prefer_c2_help = self._prefer_c2_over_gas(inputs)
+        prefer_solar = self._prefer_solar_over_gas(inputs)
+        antileg_forced_heat = state.antileg_request and not self._solar_ready_for_antileg()
 
         gas_on = self._should_activate_gas(inputs)
         valve_on = self._should_activate_valve(inputs)
@@ -131,9 +189,11 @@ class Block2Controller:
         heat_pump_on = self._should_activate_heat_pump(inputs)
         piscina_pump_on = self._should_activate_piscina_pump(inputs)
 
-        if prefer_c2_help:
+        if prefer_solar:
             self.gas_off_timer = 0
             gas_on = False
+        elif antileg_forced_heat:
+            self.gas_off_timer = 0
         elif gas_on:
             self.gas_off_timer = now + config.GAS_OFF_DELAY_S
         elif now < self.gas_off_timer:
@@ -144,7 +204,9 @@ class Block2Controller:
         elif now < self.valve_off_timer:
             valve_on = True
 
-        if pdc_cmd_on:
+        if antileg_forced_heat:
+            self.pdc_cmd_hold_timer = 0
+        elif pdc_cmd_on:
             self.pdc_cmd_hold_timer = now + config.PDC_C2_CMD_HOLD_S
         elif now < self.pdc_cmd_hold_timer:
             pdc_cmd_on = True

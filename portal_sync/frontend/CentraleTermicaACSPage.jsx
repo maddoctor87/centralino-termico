@@ -1,7 +1,19 @@
 import React, { useCallback, useEffect, useState } from "react";
+import {
+  CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { getToken } from "./auth";
 
 const POLL_MS = 5000;
+const ACS_HISTORY_POINTS = 180;
+const ACS_HISTORY_STORAGE_KEY = "acs-history-v1";
 
 const SENSOR_META = {
   S1: { label: "Pannelli solari", icon: "☀️", zone: "solare" },
@@ -130,6 +142,24 @@ const SENSOR_ALARM_MAP = {
 const WILO_STOP_DUTY_PCT = 20;
 const WILO_MIN_RUN_DUTY_PCT = 23;
 const WILO_MAX_RUN_DUTY_PCT = 95;
+const ANTILEG_SCHEDULE_DEFAULT = {
+  enabled: false,
+  weekday: 6,
+  time_hhmm: "03:00",
+  weekday_label: "Domenica",
+  next_run_at: null,
+  last_trigger_at: null,
+  last_result: null,
+};
+const ANTILEG_WEEKDAYS = [
+  { value: 0, label: "Lunedi" },
+  { value: 1, label: "Martedi" },
+  { value: 2, label: "Mercoledi" },
+  { value: 3, label: "Giovedi" },
+  { value: 4, label: "Venerdi" },
+  { value: 5, label: "Sabato" },
+  { value: 6, label: "Domenica" },
+];
 
 function hasOwn(obj, key) {
   return !!obj && Object.prototype.hasOwnProperty.call(obj, key);
@@ -211,6 +241,57 @@ function formatAgo(ts) {
 function formatDate(ts) {
   if (!ts) return "—";
   return new Date(ts * 1000).toLocaleString("it-IT");
+}
+
+function formatHistoryTime(ts) {
+  if (!ts) return "—";
+  return new Date(ts * 1000).toLocaleTimeString("it-IT", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function normalizeAntilegSchedule(schedule) {
+  const next = schedule && typeof schedule === "object" ? schedule : {};
+  const weekday = Number(next.weekday);
+  return {
+    enabled: Boolean(next.enabled),
+    weekday: Number.isInteger(weekday) ? weekday : 6,
+    time_hhmm:
+      typeof next.time_hhmm === "string" && next.time_hhmm
+        ? next.time_hhmm
+        : "03:00",
+    weekday_label:
+      typeof next.weekday_label === "string" && next.weekday_label
+        ? next.weekday_label
+        : "Domenica",
+    next_run_at: next.next_run_at ?? null,
+    last_trigger_at: next.last_trigger_at ?? null,
+    last_result:
+      typeof next.last_result === "string" ? next.last_result : null,
+  };
+}
+
+function averageDefined(values) {
+  const valid = values.filter((value) => Number.isFinite(value));
+  if (!valid.length) return null;
+  return valid.reduce((sum, value) => sum + value, 0) / valid.length;
+}
+
+function loadStoredAcsHistory() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(ACS_HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item) => item && Number.isFinite(Number(item.ts)))
+      .slice(-ACS_HISTORY_POINTS);
+  } catch (_err) {
+    return [];
+  }
 }
 
 function TempCard({ id, value, alarm }) {
@@ -674,11 +755,16 @@ function SetpointCard({
 
 export default function CentraleTermicaACSPage() {
   const [data, setData] = useState(null);
+  const [history, setHistory] = useState(() => loadStoredAcsHistory());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [cmdMsg, setCmdMsg] = useState("");
   const [busyKey, setBusyKey] = useState("");
   const [antilegPending, setAntilegPending] = useState(false);
+  const [antilegScheduleDraft, setAntilegScheduleDraft] = useState(
+    ANTILEG_SCHEDULE_DEFAULT,
+  );
+  const [antilegScheduleDirty, setAntilegScheduleDirty] = useState(false);
   const [pwmDraft, setPwmDraft] = useState("");
   const [setpointDrafts, setSetpointDrafts] = useState({});
 
@@ -695,6 +781,31 @@ export default function CentraleTermicaACSPage() {
       }
       const next = await res.json();
       setData(next);
+      setHistory((prev) => {
+        const ts = Number(next?.received_at || Date.now() / 1000);
+        if (!Number.isFinite(ts)) return prev;
+
+        const last = prev[prev.length - 1];
+        if (last && Math.abs(last.ts - ts) < 1) return prev;
+
+        const panelTemp = Number(next?.temps?.S1);
+        const boilerSolarTemp = averageDefined([
+          Number(next?.temps?.S2),
+          Number(next?.temps?.S3),
+        ]);
+        const c1Duty = Number(next?.c1_wilo_duty_pct ?? next?.c1_duty ?? 0);
+        const c1Active = Boolean(next?.c1_active ?? c1Duty > WILO_STOP_DUTY_PCT);
+
+        const point = {
+          ts,
+          timeLabel: formatHistoryTime(ts),
+          panel_temp_c: Number.isFinite(panelTemp) ? panelTemp : null,
+          boiler_solar_temp_c: boilerSolarTemp,
+          c1_active: c1Active,
+          c1_active_value: c1Active ? 1 : 0,
+        };
+        return [...prev.slice(-(ACS_HISTORY_POINTS - 1)), point];
+      });
       setError("");
     } catch (_err) {
       if (!silent) setError("Errore di rete");
@@ -708,6 +819,18 @@ export default function CentraleTermicaACSPage() {
     const timer = setInterval(() => fetchState(true), POLL_MS);
     return () => clearInterval(timer);
   }, [fetchState]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        ACS_HISTORY_STORAGE_KEY,
+        JSON.stringify(history.slice(-ACS_HISTORY_POINTS)),
+      );
+    } catch (_err) {
+      // ignore localStorage quota / private mode errors
+    }
+  }, [history]);
 
   useEffect(() => {
     if (!data) return;
@@ -736,6 +859,11 @@ export default function CentraleTermicaACSPage() {
       return changed ? next : prev;
     });
   }, [data]);
+
+  useEffect(() => {
+    if (!data?.antileg_schedule || antilegScheduleDirty) return;
+    setAntilegScheduleDraft(normalizeAntilegSchedule(data.antileg_schedule));
+  }, [data, antilegScheduleDirty]);
 
   const postCommand = useCallback(
     async (key, url, body, successMsg) => {
@@ -866,6 +994,47 @@ export default function CentraleTermicaACSPage() {
         : "Flag piscina appena riempita azzerato.",
     );
 
+  const sendAntilegSchedule = async () => {
+    const weekday = Number(antilegScheduleDraft.weekday);
+    const time_hhmm = String(antilegScheduleDraft.time_hhmm || "").trim();
+    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
+      setCmdMsg("Errore: giorno antilegionella non valido.");
+      return;
+    }
+    const match = /^(\d{2}):(\d{2})$/.exec(time_hhmm);
+    if (!match) {
+      setCmdMsg("Errore: orario antilegionella non valido.");
+      return;
+    }
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (
+      !Number.isInteger(hours) ||
+      !Number.isInteger(minutes) ||
+      hours < 0 ||
+      hours > 23 ||
+      minutes < 0 ||
+      minutes > 59
+    ) {
+      setCmdMsg("Errore: orario antilegionella non valido.");
+      return;
+    }
+    const ok = await postCommand(
+      "antileg-schedule",
+      "/api/acs/antileg-schedule",
+      {
+        enabled: Boolean(antilegScheduleDraft.enabled),
+        weekday,
+        time_hhmm,
+      },
+      "Programmazione antilegionella aggiornata.",
+    );
+    if (ok) {
+      setAntilegScheduleDirty(false);
+      fetchState(true);
+    }
+  };
+
   if (loading && !data) {
     return <div style={{ padding: 24 }}>Caricamento...</div>;
   }
@@ -903,6 +1072,7 @@ export default function CentraleTermicaACSPage() {
   const antilegOk = data?.antileg_ok ?? false;
   const antilegOkTs = data?.antileg_ok_ts ?? null;
   const antilegRequest = data?.antileg_request ?? false;
+  const antilegSchedule = normalizeAntilegSchedule(data?.antileg_schedule);
   const receivedAt = data?.received_at ?? null;
   const hasAlarm = Object.values(alarms).some(Boolean);
   const zones = ["solare", "pdc", "recirc"];
@@ -981,6 +1151,87 @@ export default function CentraleTermicaACSPage() {
 
       <SectionTitle>Stato firmware</SectionTitle>
       <RuntimeStatusCard />
+
+      <SectionTitle>Confronto solare / C1</SectionTitle>
+      <div
+        className="card"
+        style={{
+          padding: "14px 16px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+        }}
+      >
+        <div>
+          <div style={{ fontWeight: 700 }}>
+            Temperatura pannelli vs boiler solare e stato C1
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            Storico live della sessione corrente: S1 confrontata con la media di
+            S2/S3. La linea verde mostra quando C1 era ON o OFF e lo storico
+            resta salvato anche dopo il refresh della pagina.
+          </div>
+        </div>
+        <div style={{ width: "100%", height: 320 }}>
+          <ResponsiveContainer>
+            <ComposedChart
+              data={history}
+              margin={{ top: 8, right: 18, left: 0, bottom: 8 }}
+            >
+              <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
+              <XAxis dataKey="timeLabel" minTickGap={24} />
+              <YAxis yAxisId="temp" unit="°C" />
+              <YAxis
+                yAxisId="state"
+                orientation="right"
+                domain={[0, 1]}
+                ticks={[0, 1]}
+                tickFormatter={(value) => (value >= 1 ? "ON" : "OFF")}
+              />
+              <Tooltip
+                formatter={(value, name) => {
+                  if (name === "Stato C1") return [value >= 1 ? "ON" : "OFF", name];
+                  return [fmt(value), name];
+                }}
+                labelFormatter={(label, payload) => {
+                  const item = payload && payload[0] ? payload[0].payload : null;
+                  return item
+                    ? `${label} · ${item.c1_active ? "C1 attiva" : "C1 ferma"}`
+                    : label;
+                }}
+              />
+              <Legend />
+              <Line
+                yAxisId="temp"
+                type="monotone"
+                dataKey="panel_temp_c"
+                name="Pannelli solari (S1)"
+                stroke="#f4b400"
+                dot={false}
+                strokeWidth={2}
+              />
+              <Line
+                yAxisId="temp"
+                type="monotone"
+                dataKey="boiler_solar_temp_c"
+                name="Boiler solare medio (S2/S3)"
+                stroke="#64b5f6"
+                dot={false}
+                strokeWidth={2}
+              />
+              <Line
+                yAxisId="state"
+                type="stepAfter"
+                dataKey="c1_active_value"
+                name="Stato C1"
+                stroke="#4caf50"
+                dot={false}
+                strokeWidth={2}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
 
       <SectionTitle>Attuatori</SectionTitle>
       <div
@@ -1366,6 +1617,132 @@ export default function CentraleTermicaACSPage() {
           )}
         </div>
 
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: 10,
+            alignItems: "end",
+            borderTop: "1px solid var(--border)",
+            paddingTop: 10,
+          }}
+        >
+          <label
+            style={{ display: "flex", flexDirection: "column", gap: 6 }}
+          >
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Programmazione settimanale
+            </span>
+            <select
+              value={antilegScheduleDraft.enabled ? "1" : "0"}
+              onChange={(e) => {
+                setAntilegScheduleDirty(true);
+                setAntilegScheduleDraft((prev) => ({
+                  ...prev,
+                  enabled: e.target.value === "1",
+                }));
+              }}
+            >
+              <option value="0">Disattivata</option>
+              <option value="1">Attivata</option>
+            </select>
+          </label>
+
+          <label
+            style={{ display: "flex", flexDirection: "column", gap: 6 }}
+          >
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Giorno
+            </span>
+            <select
+              value={String(antilegScheduleDraft.weekday)}
+              onChange={(e) => {
+                setAntilegScheduleDirty(true);
+                setAntilegScheduleDraft((prev) => ({
+                  ...prev,
+                  weekday: Number(e.target.value),
+                }));
+              }}
+            >
+              {ANTILEG_WEEKDAYS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label
+            style={{ display: "flex", flexDirection: "column", gap: 6 }}
+          >
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Orario
+            </span>
+            <input
+              type="time"
+              value={antilegScheduleDraft.time_hhmm}
+              onChange={(e) => {
+                setAntilegScheduleDirty(true);
+                setAntilegScheduleDraft((prev) => ({
+                  ...prev,
+                  time_hhmm: e.target.value,
+                }));
+              }}
+            />
+          </label>
+
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: 6 }}
+          >
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Prossimo avvio
+            </span>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>
+              {antilegSchedule.enabled && antilegSchedule.next_run_at
+                ? formatDate(antilegSchedule.next_run_at)
+                : "—"}
+            </div>
+          </div>
+
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: 6 }}
+          >
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Ultimo trigger scheduler
+            </span>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>
+              {antilegSchedule.last_trigger_at
+                ? formatDate(antilegSchedule.last_trigger_at)
+                : "—"}
+            </div>
+            {antilegSchedule.last_result && (
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {antilegSchedule.last_result}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busyKey === "antileg-schedule"}
+            onClick={sendAntilegSchedule}
+          >
+            {busyKey === "antileg-schedule"
+              ? "..."
+              : "Salva programmazione"}
+          </button>
+        </div>
+
         {cmdMsg && (
           <div
             style={{
@@ -1388,8 +1765,10 @@ export default function CentraleTermicaACSPage() {
             paddingTop: 8,
           }}
         >
-          Il ciclo antilegionella usa ancora la logica esistente. I comandi
-          manuali pompe e setpoint sono separati da quella logica.
+          Il ciclo antilegionella usa CR in alta temperatura e puo essere
+          avviato manualmente o programmato ogni settimana. In firmware prova
+          prima il solare; se il boiler solare non e sufficiente usa gas e
+          comando PDC ACR.
         </div>
       </div>
 

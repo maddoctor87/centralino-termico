@@ -4,6 +4,9 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timedelta
+from pathlib import Path
+from threading import Event, Thread
 from threading import Lock
 from typing import Any, Dict, Optional
 
@@ -17,6 +20,12 @@ ACS_ROLES = ["superad", "admin", "maintenance"]
 ACS_TOPIC = os.environ.get("ACS_MQTT_TOPIC", "centralina/state").strip()
 ACS_CMD_TOPIC = os.environ.get("ACS_MQTT_CMD_TOPIC", "centralina/cmd").strip()
 ACS_OFFLINE_AFTER_S = max(30, int(os.environ.get("ACS_OFFLINE_AFTER_S", "60")))
+ACS_ANTILEG_SCHEDULE_FILE = Path(
+    os.environ.get("ACS_ANTILEG_SCHEDULE_FILE", "data/acs_antileg_schedule.json")
+).resolve()
+ACS_ANTILEG_SCHEDULE_POLL_S = max(
+    10, int(os.environ.get("ACS_ANTILEG_SCHEDULE_POLL_S", "15"))
+)
 
 
 # ── Store thread-safe ─────────────────────────────────────────────────────────
@@ -215,5 +224,195 @@ class ACSMQTTBridge:
             raw = ""
         self._store.update(raw)
 
+class ACSAntilegScheduler:
+    _DEFAULT: Dict[str, Any] = {
+        "enabled": False,
+        "weekday": 6,
+        "time_hhmm": "03:00",
+        "last_trigger_at": None,
+        "last_trigger_key": None,
+        "last_result": None,
+    }
+    _WEEKDAY_LABELS = (
+        "Lunedi",
+        "Martedi",
+        "Mercoledi",
+        "Giovedi",
+        "Venerdi",
+        "Sabato",
+        "Domenica",
+    )
 
-__all__ = ["ACSStore", "ACSMQTTBridge", "ACS_ROLES"]
+    def __init__(self, publish_cmd, snapshot_fn, tzinfo) -> None:
+        self._publish_cmd = publish_cmd
+        self._snapshot_fn = snapshot_fn
+        self._tzinfo = tzinfo
+        self._lock = Lock()
+        self._stop = Event()
+        self._thread: Optional[Thread] = None
+        self._data: Dict[str, Any] = dict(self._DEFAULT)
+        self._load()
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = Thread(
+            target=self._loop,
+            name="acs-antileg-scheduler",
+            daemon=True,
+        )
+        self._thread.start()
+        logger.info("ACSAntilegScheduler avviato")
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=2.0)
+        self._thread = None
+
+    def update_config(self, *, enabled: bool, weekday: int, time_hhmm: str) -> Dict[str, Any]:
+        normalized = {
+            "enabled": bool(enabled),
+            "weekday": self._normalize_weekday(weekday),
+            "time_hhmm": self._normalize_time_hhmm(time_hhmm),
+        }
+        with self._lock:
+            self._data.update(normalized)
+            self._save_unlocked()
+        return self.snapshot()
+
+    def snapshot(self) -> Dict[str, Any]:
+        with self._lock:
+            data = dict(self._data)
+        next_run = self._next_run_dt(data, now_dt=datetime.now(self._tzinfo))
+        weekday = int(data["weekday"])
+        return {
+            "enabled": bool(data["enabled"]),
+            "weekday": weekday,
+            "weekday_label": self._WEEKDAY_LABELS[weekday],
+            "time_hhmm": data["time_hhmm"],
+            "next_run_at": int(next_run.timestamp()) if next_run else None,
+            "last_trigger_at": data.get("last_trigger_at"),
+            "last_result": data.get("last_result"),
+        }
+
+    def _loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                self._tick()
+            except Exception:
+                logger.exception("ACSAntilegScheduler tick error")
+            if self._stop.wait(ACS_ANTILEG_SCHEDULE_POLL_S):
+                break
+
+    def _tick(self) -> None:
+        with self._lock:
+            data = dict(self._data)
+
+        now_dt = datetime.now(self._tzinfo)
+        trigger_key = self._current_trigger_key(data, now_dt)
+        if trigger_key is None:
+            return
+        if data.get("last_trigger_key") == trigger_key:
+            return
+
+        snapshot = self._snapshot_fn() if callable(self._snapshot_fn) else {}
+        if isinstance(snapshot, dict) and snapshot.get("antileg_request"):
+            self._mark_trigger(trigger_key, int(time.time()), "already_active")
+            return
+
+        ok = bool(self._publish_cmd({"antileg_request": True}))
+        self._mark_trigger(
+            trigger_key,
+            int(time.time()),
+            "published" if ok else "publish_failed",
+        )
+        if not ok:
+            logger.warning("ACSAntilegScheduler publish failed for key=%s", trigger_key)
+
+    def _mark_trigger(self, trigger_key: str, ts: int, result: str) -> None:
+        with self._lock:
+            self._data["last_trigger_key"] = trigger_key
+            self._data["last_trigger_at"] = int(ts)
+            self._data["last_result"] = str(result)
+            self._save_unlocked()
+
+    def _load(self) -> None:
+        try:
+            payload = json.loads(ACS_ANTILEG_SCHEDULE_FILE.read_text())
+        except Exception:
+            return
+
+        if not isinstance(payload, dict):
+            return
+
+        try:
+            normalized = {
+                "enabled": bool(payload.get("enabled", self._DEFAULT["enabled"])),
+                "weekday": self._normalize_weekday(payload.get("weekday", self._DEFAULT["weekday"])),
+                "time_hhmm": self._normalize_time_hhmm(payload.get("time_hhmm", self._DEFAULT["time_hhmm"])),
+                "last_trigger_at": self._normalize_optional_int(payload.get("last_trigger_at")),
+                "last_trigger_key": payload.get("last_trigger_key"),
+                "last_result": payload.get("last_result"),
+            }
+        except Exception as e:
+            logger.warning("ACSAntilegScheduler load error: %s", e)
+            return
+
+        with self._lock:
+            self._data.update(normalized)
+
+    def _save_unlocked(self) -> None:
+        ACS_ANTILEG_SCHEDULE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        ACS_ANTILEG_SCHEDULE_FILE.write_text(json.dumps(self._data))
+
+    def _current_trigger_key(self, data: Dict[str, Any], now_dt: datetime) -> Optional[str]:
+        if not data.get("enabled"):
+            return None
+        hour, minute = self._split_hhmm(data["time_hhmm"])
+        if now_dt.weekday() != int(data["weekday"]):
+            return None
+        if now_dt.hour != hour or now_dt.minute != minute:
+            return None
+        return now_dt.strftime("%Y%m%d%H%M")
+
+    def _next_run_dt(self, data: Dict[str, Any], now_dt: datetime) -> Optional[datetime]:
+        if not data.get("enabled"):
+            return None
+        hour, minute = self._split_hhmm(data["time_hhmm"])
+        weekday = int(data["weekday"])
+        day_delta = (weekday - now_dt.weekday()) % 7
+        candidate = now_dt.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        candidate += timedelta(days=day_delta)
+        if candidate <= now_dt:
+            candidate += timedelta(days=7)
+        return candidate
+
+    def _normalize_weekday(self, value: Any) -> int:
+        weekday = int(value)
+        if weekday < 0 or weekday > 6:
+            raise ValueError("weekday fuori range 0..6")
+        return weekday
+
+    def _normalize_time_hhmm(self, value: Any) -> str:
+        hour, minute = self._split_hhmm(value)
+        return "{:02d}:{:02d}".format(hour, minute)
+
+    def _split_hhmm(self, value: Any) -> tuple[int, int]:
+        parts = str(value or "").strip().split(":")
+        if len(parts) != 2:
+            raise ValueError("time_hhmm deve essere HH:MM")
+        hour = int(parts[0])
+        minute = int(parts[1])
+        if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+            raise ValueError("time_hhmm non valido")
+        return hour, minute
+
+    def _normalize_optional_int(self, value: Any) -> Optional[int]:
+        if value in (None, ""):
+            return None
+        return int(value)
+
+
+__all__ = ["ACSStore", "ACSMQTTBridge", "ACSAntilegScheduler", "ACS_ROLES"]

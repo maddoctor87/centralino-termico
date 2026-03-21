@@ -25,7 +25,8 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 - **Stato attuale**: attivo e schedulato nel `main.py` della repo corrente.
 - **Logica target** (`Block2Controller.run_once`):
   - **GAS_ENABLE**: ON se PDC_HELP_REQUEST, o PDC lavora su C1 + richiesta piscina/riscaldamento, o boost dopo lavoro continuo C2 su piscina, o piscina appena riempita (placeholder).
-  - **Priorita aiuto PDC da solare**: se `PDC_HELP_REQUEST` e la media boiler solare (`S2/S3`) e' maggiore di `S5` (fondo boiler PDC), il firmware preferisce `C2` al gas e forza `GAS_ENABLE=OFF` senza trattenere il delay di spegnimento; in questo ramo il gas resta ultima risorsa.
+  - **Priorita aiuto PDC da solare**: se `PDC_HELP_REQUEST` e il lato solare e' a temperatura critica, il firmware preferisce scaricare il boiler solare su `C2` invece di accendere il gas; fuori da quel caso il gas resta l'unico aiuto automatico.
+  - **Filtro aiuto PDC**: se `PDC_HELP_REQUEST` ma `S5` ha gia' raggiunto il target del boiler PDC, la richiesta viene ignorata: `GAS_ENABLE=OFF` e `C2=OFF`.
   - **VALVE**: ON su richiesta piscina o riscaldamento (valvola EVIE, devia flusso).
   - **PDC_CMD_START_ACR**: ON se PDC libero da C1 + richiesta piscina/riscaldamento (comanda il lavoro ACR).
   - **HEAT_PUMP**: ON su richiesta aiuto riscaldamento.
@@ -40,16 +41,19 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 ### Altri controlli
 - **C2 (trasferimento solare → PDC)**: `control_c2.py`
   - ON se la media del boiler solare (`S2/S3`) supera la media del boiler PDC (`S4/S5`) oltre hysteresis.
-  - Override aiuto PDC: se `PDC_HELP_REQUEST` e la media del boiler solare (`S2/S3`) supera `S5`, `C2` viene forzata ON anche fuori dalla logica hysteresis normale.
+  - Override aiuto PDC: se `PDC_HELP_REQUEST` ma `S5` e' gia' al target boiler PDC, la richiesta viene ignorata.
+  - In `PDC_HELP_REQUEST`, `C2` non viene piu usata come aiuto normale: parte solo come scarico del boiler solare se la temperatura lato solare e' critica.
+  - Override antilegionella: se `antileg_request` e la media boiler solare (`S2/S3`) ha gia' raggiunto il target antilegionella, `C2` viene forzata ON; se il solare non e' pronto, `C2` resta OFF e la priorita passa a gas + PDC ACR.
   - Stop aggiuntivo se ACS e' attiva e `S1` scende sotto la media del boiler solare.
   - Hard stop invariato se `S4` supera la soglia di sicurezza.
   - Uscita: C2 (Q0.0).
 - **CR (ricircolo collettore)**: `control_recirc.py`
   - In normale parte solo se il boiler PDC (media `S4/S5`) e' almeno a 40 C.
   - L'abilitazione da boiler PDC ha isteresi dedicata: se CR e' gia' attivo resta abilitato fino a 38 C.
-  - Poi mantiene il collettore a 45 C con isteresi; emergenza/antilegionella restano invariate.
+  - Poi mantiene il collettore a 45 C con isteresi.
+  - In antilegionella usa il setpoint `antileg_target_c`, resta attiva finche' `min(S6,S7)` raggiunge il target per 3600 secondi e poi chiude automaticamente la richiesta mantenendo l'ultimo esito `OK`.
   - Uscita: CR (Q0.1).
-- **Antilegionella**: In `control_panels.py`, ciclo C1 per pulizia.
+- **Antilegionella**: richiesta manuale o schedulata dal portale; esecuzione nel firmware tramite `control_recirc.py`, con supporto di `control_c2.py` e `control_block2_pool_heat_pdc.py` per scegliere tra solare e gas + PDC ACR.
 
 ## 3. Gestione I/O
 - **Sensori temperatura** (`sensors.py`): DS18B20 via DS2482, lettura asincrona ogni 1s, validazione, allarmi su sensori invalidi.
@@ -58,6 +62,7 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 
 ## 4. Comunicazioni
 - **MQTT** (`comms_mqtt.py`): Connessione a broker, publish snapshot ogni 10s su `centralina/state`, subscribe comandi su `centralina/cmd` (manual override, antileg, setpoints, `pool_just_filled`).
+- **Scheduler antilegionella** (`portal_sync/backend/acs.py` + `portal_sync/backend/main.py`): il backend mantiene una programmazione settimanale configurabile dal portale ACS e pubblica `antileg_request=true` all'orario stabilito usando la timezone applicativa del server.
 - **Ethernet**: W5500 per rete, DHCP/static IP.
 
 ## 5. Stato e sicurezza
