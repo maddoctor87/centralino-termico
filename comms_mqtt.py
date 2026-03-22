@@ -89,8 +89,12 @@ def _on_cmd(topic, msg):
             if requested and not state.antileg_request:
                 state.antileg_ok = False
                 state.antileg_hold_start = None
+                state.antileg_hold_elapsed_s = 0
+                state.antileg_phase = 'heat_boiler'
             if not requested:
                 state.antileg_hold_start = None
+                state.antileg_hold_elapsed_s = 0
+                state.antileg_phase = 'idle'
             state.antileg_request = requested
             print('[mqtt] antileg_request =', state.antileg_request)
 

@@ -214,7 +214,8 @@ CR_HYSTERESIS_EMERG = 3.0
 CR_EMERG_TEMP = 85.0
 
 # ── Antilegionella ────────────────────────────────────────────────────────────
-ANTILEGIONELLA_OK_SECONDS = 3600
+ANTILEGIONELLA_OK_SECONDS = 1800
+ANTILEGIONELLA_TOP_START_OFFSET_C = 5.0
 
 # ── Block 2 piscina / riscaldamento ──────────────────────────────────────────
 # La logica è schedulata in main.py e governa le uscite ausiliarie fuori dal manuale.

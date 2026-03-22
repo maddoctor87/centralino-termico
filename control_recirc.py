@@ -60,20 +60,47 @@ def _solar_boiler_high_temp():
     return max(valid)
 
 
+def _pdc_boiler_ready_for_antileg_start(target_c):
+    s4 = state.temps.get('S4')
+    s5 = state.temps.get('S5')
+    if s4 is None or s5 is None:
+        return False
+    return s5 >= target_c and s4 >= (target_c + config.ANTILEGIONELLA_TOP_START_OFFSET_C)
+
+
+def _pdc_boiler_ready_for_antileg_hold(target_c):
+    s4 = state.temps.get('S4')
+    s5 = state.temps.get('S5')
+    if s4 is None or s5 is None:
+        return False
+    return s4 >= target_c and s5 >= target_c
+
+
+def _pause_antileg_timer():
+    if state.antileg_hold_start is not None:
+        state.antileg_hold_elapsed_s += max(0, time.time() - state.antileg_hold_start)
+        state.antileg_hold_start = None
+
+
+def _resume_antileg_timer():
+    if state.antileg_hold_start is None:
+        state.antileg_hold_start = time.time()
+
+
+def _reset_antileg_timer():
+    state.antileg_hold_start = None
+    state.antileg_hold_elapsed_s = 0
+
+
 def run_once(sensor_mgr, actuator_mgr):
     if state.manual_mode:
         actuator_mgr.set_relay('CR', state.manual_relays.get('CR', False))
         return
 
-    # Sensori collettore: almeno uno valido
     s6 = state.temps.get('S6')
     s7 = state.temps.get('S7')
     valid = [t for t in (s6, s7) if t is not None]
-    if not valid:
-        actuator_mgr.set_relay('CR', config.SAFE_RELAY_STATE)
-        return
-
-    tcol = min(valid)
+    tcol = min(valid) if valid else None
     s4 = state.temps.get('S4')
     s5 = state.temps.get('S5')
     tpdc = _average_defined((s4, s5))
@@ -86,30 +113,60 @@ def run_once(sensor_mgr, actuator_mgr):
     emerg = (solar_boiler_high is not None and solar_boiler_high >= config.CR_EMERG_TEMP) or antileg_mode
     state.cr_emerg_mode = emerg
 
-    # Gestione timer antilegionella
+    # Gestione timer antilegionella:
+    # 1) porta il boiler PDC a target: S5>=target e S4>=target+offset
+    # 2) attiva CR
+    # 3) mantiene il boiler PDC a target per la finestra richiesta
     if antileg_mode:
         target_c = _get_antileg_target_c()
-        if tcol >= target_c:
-            if state.antileg_hold_start is None:
-                state.antileg_hold_start = time.time()
-            elapsed = time.time() - state.antileg_hold_start
+        start_ready = _pdc_boiler_ready_for_antileg_start(target_c)
+        hold_ready = _pdc_boiler_ready_for_antileg_hold(target_c)
+
+        if start_ready and state.antileg_phase in ('heat_boiler', 'pause_recirc'):
+            state.antileg_phase = 'hold_recirc'
+            _resume_antileg_timer()
+
+        if state.antileg_phase == 'hold_recirc' and not hold_ready:
+            _pause_antileg_timer()
+            state.antileg_phase = 'pause_recirc'
+
+        if state.antileg_phase == 'hold_recirc':
+            _resume_antileg_timer()
+            elapsed = state.antileg_hold_elapsed_s + max(0, time.time() - state.antileg_hold_start)
             if elapsed >= config.ANTILEGIONELLA_OK_SECONDS:
                 if not state.antileg_ok:
                     print('[CR] antilegionella OK ({}s)'.format(int(elapsed)))
                 state.antileg_ok = True
                 state.antileg_ok_ts = time.time()
                 state.antileg_request = False
-                state.antileg_hold_start = None
+                _reset_antileg_timer()
+                state.antileg_phase = 'idle'
                 antileg_mode = False
                 emerg = solar_boiler_high is not None and solar_boiler_high >= config.CR_EMERG_TEMP
                 state.cr_emerg_mode = emerg
             else:
                 state.antileg_ok = False
         else:
-            state.antileg_hold_start = None
+            if state.antileg_phase not in ('pause_recirc', 'hold_recirc'):
+                state.antileg_phase = 'heat_boiler'
             state.antileg_ok = False
     else:
-        state.antileg_hold_start = None
+        _reset_antileg_timer()
+        state.antileg_phase = 'idle'
+
+    if antileg_mode:
+        if state.antileg_phase in ('heat_boiler', 'pause_recirc'):
+            state.cr_on_state = False
+            actuator_mgr.set_relay('CR', False)
+            return
+
+        state.cr_on_state = True
+        actuator_mgr.set_relay('CR', True)
+        return
+
+    if not valid:
+        actuator_mgr.set_relay('CR', config.SAFE_RELAY_STATE)
+        return
 
     # Soglie isteresi in base alla modalità
     if emerg:

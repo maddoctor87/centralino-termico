@@ -104,6 +104,8 @@ antileg_request = False
 antileg_ok = False
 antileg_ok_ts = None
 antileg_hold_start = None
+antileg_hold_elapsed_s = 0
+antileg_phase = 'idle'
 
 # ── Snapshot ts ───────────────────────────────────────────────────────────────
 last_snapshot_ts = 0
@@ -442,6 +444,8 @@ def snapshot():
         'antileg_ok': antileg_ok,
         'antileg_ok_ts': antileg_ok_ts,
         'antileg_request': antileg_request,
+        'antileg_hold_elapsed_s': antileg_hold_elapsed_s,
+        'antileg_phase': antileg_phase,
         'temp_remote_received_at': temp_remote_received_at,
         'temp_remote_payload_ts': temp_remote_payload_ts,
         'temp_remote_topic': temp_remote_topic,

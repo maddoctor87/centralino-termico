@@ -87,6 +87,8 @@ class ACSStore:
         "antileg_ok": False,
         "antileg_ok_ts": None,
         "antileg_request": False,
+        "antileg_hold_elapsed_s": 0,
+        "antileg_phase": "idle",
     }
 
     def __init__(self) -> None:
