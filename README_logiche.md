@@ -14,6 +14,8 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 - **Logica** (`control_panels_task`):
   - Calcola `delta_solare = S1 - S2` (pannelli vs boiler solare).
   - Se delta > soglia minima, attiva C1 con wilo duty basato su friction factor e hysteresis.
+  - Il setpoint portale `solar_target_c` limita il caricamento normale del boiler solare: a target raggiunto C1 si ferma e riparte solo sotto isteresi.
+  - Il setpoint `solar_target_c` viene ignorato solo in emergenza termica sul boiler solare (`S3`/`S2` alti a 85 C), dove restano attive solo le protezioni di sicurezza.
   - Override manuale, hard stop su allarmi sensori.
   - Antilegionella: Ciclo periodico per prevenire batteri (configurabile).
 - **Uscita**: C1 Wilo PWM2 su Q0.5 del PLC 21 (switch B1 = ON).
@@ -50,8 +52,9 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 - **CR (ricircolo collettore)**: `control_recirc.py`
   - In normale parte solo se il boiler PDC (media `S4/S5`) e' almeno a 40 C.
   - L'abilitazione da boiler PDC ha isteresi dedicata: se CR e' gia' attivo resta abilitato fino a 38 C.
-  - Poi mantiene il collettore a 45 C con isteresi: si accende quando `min(S6,S7)` scende a 41 C o meno e si spegne a 45 C.
+  - Poi mantiene il collettore al setpoint portale `recirc_target_c` con isteresi: si accende quando `min(S6,S7)` scende sotto il target meno isteresi e si spegne al target.
   - In antilegionella usa il setpoint `antileg_target_c`, resta attiva finche' `min(S6,S7)` raggiunge il target per 3600 secondi e poi chiude automaticamente la richiesta mantenendo l'ultimo esito `OK`.
+  - Il setpoint normale `recirc_target_c` viene ignorato solo in emergenza o antilegionella; l'emergenza CR scatta solo se il boiler solare alto (`max(S2,S3)`) arriva a 85 C.
   - Uscita: CR (Q0.1).
 - **Antilegionella**: richiesta manuale o schedulata dal portale; esecuzione nel firmware tramite `control_recirc.py`, con supporto di `control_c2.py` e `control_block2_pool_heat_pdc.py` per scegliere tra solare e gas + PDC ACR.
 

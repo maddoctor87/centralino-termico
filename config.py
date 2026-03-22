@@ -196,6 +196,7 @@ C1_STAGNATION_TEMP = 130.0
 C1_STAGNATION_SPEED_PCT = 30
 C1_STOP_HARD_TEMP = 85.0
 C1_LATCH_RESET_TEMP = 70.0
+C1_SOLAR_TARGET_HYSTERESIS_C = 2.0
 
 # ── Logiche C2 ────────────────────────────────────────────────────────────────
 C2_DELTA_ON = 5.0
@@ -210,7 +211,7 @@ CR_ENABLE_MIN_PDC_TEMP = 40.0
 CR_ENABLE_HYSTERESIS_PDC = 2.0
 CR_TARGET_EMERG = 70.0
 CR_HYSTERESIS_EMERG = 3.0
-CR_EMERG_TEMP = 80.0
+CR_EMERG_TEMP = 85.0
 
 # ── Antilegionella ────────────────────────────────────────────────────────────
 ANTILEGIONELLA_OK_SECONDS = 3600

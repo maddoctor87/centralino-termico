@@ -85,6 +85,10 @@ def _get_setpoint(name: str, default):
     return default
 
 
+def _get_solar_target_c() -> float:
+    return float(_get_setpoint("solar_target_c", config.SETPOINTS["solar_target_c"]["default"]))
+
+
 # ---------------------------------------------------------------------------
 # Helpers logica
 # ---------------------------------------------------------------------------
@@ -266,6 +270,8 @@ def run_once(sensor_mgr, actuator_mgr):
     tavg = (s2 + s3) / 2.0
     thigh = max(s2, s3)
     delta = s1 - tavg
+    solar_target = _get_solar_target_c()
+    solar_emergency = thigh >= config.C1_STOP_HARD_TEMP
 
     # Hysteresis ON/OFF
     c1_on_delta = getattr(config, "C1_ON_DELTA", 4.0)
@@ -292,6 +298,16 @@ def run_once(sensor_mgr, actuator_mgr):
         active = True
     elif active and delta <= c1_off_delta:
         active = False
+
+    # Il target boiler solare del portale governa C1 in regime normale.
+    # In emergenza (boiler solare a soglia alta) viene ignorato e restano
+    # valide solo le protezioni termiche dedicate.
+    if not solar_emergency:
+        restart_thresh = solar_target - config.C1_SOLAR_TARGET_HYSTERESIS_C
+        if active and tavg >= solar_target:
+            active = False
+        elif (not active) and tavg > restart_thresh:
+            active = False
 
     wilo_duty_pct = _compute_c1_wilo_duty_pct(s1, s2, s3, s4, active)
 
