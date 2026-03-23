@@ -15,6 +15,8 @@ class Block2Controller:
         self.valve_off_timer = 0
         self.pdc_cmd_hold_timer = 0
         self.c2_work_start = None
+        self.acs_work_start = None
+        self.acs_help_start = None
 
     def _pool_just_filled_active(self):
         getter = getattr(state, 'get_pool_just_filled', None)
@@ -75,18 +77,72 @@ class Block2Controller:
             return False
         return s5 >= self._get_pdc_target_c()
 
-    def _pdc_help_gas_needed(self):
+    def _update_acs_timers(self, inputs, now):
+        if inputs.get('PDC_WORK_ACS', False):
+            if self.acs_work_start is None:
+                self.acs_work_start = now
+        else:
+            self.acs_work_start = None
+
+        if inputs.get('PDC_HELP_REQUEST', False):
+            if self.acs_help_start is None:
+                self.acs_help_start = now
+        else:
+            self.acs_help_start = None
+
+    def _acs_support_elapsed_s(self, inputs, now):
+        elapsed = []
+        if inputs.get('PDC_WORK_ACS', False) and self.acs_work_start is not None:
+            elapsed.append(max(0, now - self.acs_work_start))
+        if inputs.get('PDC_HELP_REQUEST', False) and self.acs_help_start is not None:
+            elapsed.append(max(0, now - self.acs_help_start))
+        if not elapsed:
+            return 0
+        return max(elapsed)
+
+    def _acs_solar_bonus_delay_s(self):
+        s2 = state.temps.get('S2')
+        s3 = state.temps.get('S3')
+        s5 = state.temps.get('S5')
+        if s2 is None or s3 is None or s5 is None:
+            return 0
+        tsolare = (s2 + s3) / 2.0
+        if tsolare > (s5 + config.ACS_GAS_SOLAR_BONUS_DELTA_C):
+            return config.ACS_GAS_SOLAR_BONUS_DELAY_S
+        return 0
+
+    def _acs_gas_needed(self, inputs, now):
         s4 = state.temps.get('S4')
         s5 = state.temps.get('S5')
+        if self._pdc_boiler_satisfied():
+            return False
+
+        elapsed = self._acs_support_elapsed_s(inputs, now)
+        bonus_delay = self._acs_solar_bonus_delay_s()
+        base_delay = config.ACS_GAS_DELAY_BASE_S + bonus_delay
+        strong_delay = config.ACS_GAS_DELAY_STRONG_S + bonus_delay
+
+        if elapsed < base_delay:
+            return False
+
         if s4 is None or s5 is None:
             return True
 
         target = self._get_pdc_target_c()
         top_gap = target - s4
+        bottom_gap = target - s5
         strat_delta = abs(s4 - s5)
+
+        if elapsed < strong_delay:
+            return (
+                top_gap >= config.ACS_GAS_STAGE1_TOP_GAP_C or
+                strat_delta >= config.ACS_GAS_STAGE1_STRAT_DELTA_C
+            )
+
         return (
-            top_gap >= config.PDC_HELP_GAS_TOP_GAP_C or
-            strat_delta >= config.PDC_HELP_GAS_STRAT_DELTA_C
+            top_gap >= config.ACS_GAS_STAGE2_TOP_GAP_C or
+            bottom_gap >= config.ACS_GAS_STAGE2_BOTTOM_GAP_C or
+            strat_delta >= config.ACS_GAS_STAGE2_STRAT_DELTA_C
         )
 
     def _solar_critical_for_pdc_dump(self):
@@ -123,14 +179,12 @@ class Block2Controller:
         actuator_mgr.set_relay('PISCINA_PUMP', outputs['piscina_pump'])
         self._publish_outputs(outputs)
 
-    def _should_activate_gas(self, inputs):
+    def _should_activate_gas(self, inputs, now):
         if state.antileg_request:
             return not self._solar_ready_for_antileg()
 
         if inputs.get('PDC_HELP_REQUEST', False):
-            if self._pdc_boiler_satisfied():
-                return False
-            if not self._pdc_help_gas_needed():
+            if not self._acs_gas_needed(inputs, now):
                 return False
             if self._prefer_solar_over_gas(inputs):
                 return False
@@ -140,7 +194,7 @@ class Block2Controller:
             inputs.get('POOL_THERMOSTAT_CALL', False) or
             inputs.get('HEAT_HELP_REQUEST', False)
         ):
-            return True
+            return self._acs_gas_needed(inputs, now)
 
         if (inputs.get('POOL_THERMOSTAT_CALL', False) and
             inputs.get('PDC_WORK_ACR', False)):
@@ -196,10 +250,11 @@ class Block2Controller:
             return
 
         now = time.time()
+        self._update_acs_timers(inputs, now)
         prefer_solar = self._prefer_solar_over_gas(inputs)
         antileg_forced_heat = state.antileg_request and not self._solar_ready_for_antileg()
 
-        gas_on = self._should_activate_gas(inputs)
+        gas_on = self._should_activate_gas(inputs, now)
         valve_on = self._should_activate_valve(inputs)
         pdc_cmd_on = self._should_cmd_pdc_c2(inputs)
         heat_pump_on = self._should_activate_heat_pump(inputs)

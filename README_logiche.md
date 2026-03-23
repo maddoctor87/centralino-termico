@@ -26,7 +26,7 @@ Questo documento descrive tutte le logiche implementate nel firmware MicroPython
 - **Scopo**: Gestire richieste calore piscina/riscaldamento, coordinando GAS, valvola, PDC e pompe ausiliarie.
 - **Stato attuale**: attivo e schedulato nel `main.py` della repo corrente.
 - **Logica target** (`Block2Controller.run_once`):
-- **GAS_ENABLE**: ON se PDC_HELP_REQUEST ma solo quando il boiler PDC ne ha davvero bisogno (sensore alto `S4` molto sotto target oppure stratificazione `S4-S5` eccessiva), o PDC lavora su C1 + richiesta piscina/riscaldamento, o boost dopo lavoro continuo C2 su piscina, o piscina appena riempita (placeholder).
+- **GAS_ENABLE**: in ACS non entra subito. Il firmware misura da quanto tempo la PDC sta lavorando/chiedendo aiuto e abilita il gas solo a finestre progressive (`0-30 min` sempre OFF, `30-60 min` solo se il boiler PDC e' molto lontano dal target, oltre `60 min` con soglie piu permissive). Se il boiler solare puo' ancora aiutare, aggiunge un ulteriore ritardo prima di accendere il gas. Restano poi validi il boost dopo lavoro continuo C2 su piscina e il caso piscina appena riempita (placeholder).
   - **Priorita aiuto PDC da solare**: se `PDC_HELP_REQUEST` e il lato solare e' a temperatura critica, il firmware preferisce scaricare il boiler solare su `C2` invece di accendere il gas; fuori da quel caso il gas resta l'unico aiuto automatico.
   - **Filtro aiuto PDC**: se `PDC_HELP_REQUEST` ma `S5` ha gia' raggiunto il target del boiler PDC, la richiesta viene ignorata: `GAS_ENABLE=OFF` e `C2=OFF`.
   - **VALVE**: ON su richiesta piscina o riscaldamento (valvola EVIE, devia flusso).
