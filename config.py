@@ -41,6 +41,11 @@ MQTT_TOPIC_STATE = 'centralina/state'
 MQTT_TOPIC_CMD = 'centralina/cmd'
 MQTT_KEEPALIVE = 60
 MQTT_QOS = 1
+MQTT_STARTUP_DELAY_S = 2
+MQTT_RECONNECT_DELAY_S = 5
+MQTT_RESET_MIN_FAILURES = 6
+MQTT_RESET_AFTER_S = 180
+MQTT_SOCKET_TEST_TIMEOUT_S = 2
 
 # ── Fallback temporaneo temperature via MQTT ─────────────────────────────────
 # Usa le sonde pubblicate dall'ESP32 temporaneo solo se i sensori locali

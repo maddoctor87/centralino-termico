@@ -9,6 +9,112 @@ import config
 import state
 
 _client = None
+_connect_fail_count = 0
+_connect_fail_since = None
+
+
+def _startup_delay_s():
+    try:
+        return max(0, int(getattr(config, 'MQTT_STARTUP_DELAY_S', 0)))
+    except Exception:
+        return 0
+
+
+def _reconnect_delay_s():
+    try:
+        return max(1, int(getattr(config, 'MQTT_RECONNECT_DELAY_S', 5)))
+    except Exception:
+        return 5
+
+
+def _reset_min_failures():
+    try:
+        return max(1, int(getattr(config, 'MQTT_RESET_MIN_FAILURES', 6)))
+    except Exception:
+        return 6
+
+
+def _reset_after_s():
+    try:
+        return max(10, int(getattr(config, 'MQTT_RESET_AFTER_S', 180)))
+    except Exception:
+        return 180
+
+
+def _socket_test_timeout_s():
+    try:
+        return max(1, int(getattr(config, 'MQTT_SOCKET_TEST_TIMEOUT_S', 2)))
+    except Exception:
+        return 2
+
+
+def _clear_failures():
+    global _connect_fail_count, _connect_fail_since
+    _connect_fail_count = 0
+    _connect_fail_since = None
+
+
+def _disconnect_client():
+    global _client
+    client = _client
+    _client = None
+    if client is None:
+        return
+    try:
+        client.disconnect()
+    except Exception:
+        pass
+
+
+def _broker_reachable():
+    try:
+        import usocket as socket
+    except ImportError:
+        import socket
+
+    sock = None
+    try:
+        addr = socket.getaddrinfo(config.MQTT_BROKER, config.MQTT_PORT)[0][-1]
+        sock = socket.socket()
+        sock.settimeout(_socket_test_timeout_s())
+        sock.connect(addr)
+        return True
+    except Exception:
+        return False
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+
+def _handle_failure(label, err):
+    global _connect_fail_count, _connect_fail_since
+
+    print('[mqtt] {}: {}'.format(label, err))
+    _disconnect_client()
+
+    now = time.time()
+    if _connect_fail_since is None:
+        _connect_fail_since = now
+    _connect_fail_count += 1
+
+    if _connect_fail_count < _reset_min_failures():
+        return
+    if (now - _connect_fail_since) < _reset_after_s():
+        return
+    if not _broker_reachable():
+        print('[mqtt] broker irraggiungibile, salto reset automatico')
+        return
+
+    print('[mqtt] reset automatico: mqtt bloccato con broker raggiungibile')
+    try:
+        from machine import reset
+        time.sleep(1)
+        reset()
+    except Exception as reset_err:
+        print('[mqtt] reset automatico fallito:', reset_err)
 
 
 def _topic_text(topic):
@@ -43,6 +149,8 @@ def _connect():
     for topic in _remote_temp_topics():
         c.subscribe(topic)
     _client = c
+    _clear_failures()
+    state.last_snapshot_ts = 0
     print('[mqtt] connesso a {}:{}'.format(config.MQTT_BROKER, config.MQTT_PORT))
 
 
@@ -155,36 +263,38 @@ def _on_cmd(topic, msg):
 
 
 def publish_snapshot():
-    global _client
     if _client is None:
-        return
+        return False
     try:
         _client.publish(config.MQTT_TOPIC_STATE, ujson.dumps(state.snapshot()))
+        return True
     except Exception as e:
-        print('[mqtt] publish error:', e)
-        _client = None
+        _handle_failure('publish error', e)
+        return False
 
 
 async def mqtt_task():
-    global _client
+    startup_delay = _startup_delay_s()
+    if startup_delay:
+        await asyncio.sleep(startup_delay)
+
     while True:
         if _client is None:
             try:
                 _connect()
             except Exception as e:
-                print('[mqtt] connect error:', e)
-                await asyncio.sleep(30)
+                _handle_failure('connect error', e)
+                await asyncio.sleep(_reconnect_delay_s())
                 continue
 
         try:
             _client.check_msg()
         except Exception as e:
-            print('[mqtt] check_msg error:', e)
-            _client = None
+            _handle_failure('check_msg error', e)
 
         now = time.time()
         if now - state.last_snapshot_ts >= config.SNAPSHOT_INTERVAL_S:
-            publish_snapshot()
-            state.last_snapshot_ts = now
+            if publish_snapshot():
+                state.last_snapshot_ts = now
 
         await asyncio.sleep(1)
