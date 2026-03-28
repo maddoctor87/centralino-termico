@@ -65,7 +65,7 @@ def _pdc_boiler_ready_for_antileg_start(target_c):
     s5 = state.temps.get('S5')
     if s4 is None or s5 is None:
         return False
-    return s5 >= target_c and s4 >= (target_c + config.ANTILEGIONELLA_TOP_START_OFFSET_C)
+    return s4 >= target_c and s5 >= config.ANTILEGIONELLA_BOTTOM_READY_C
 
 
 def _pdc_boiler_ready_for_antileg_hold(target_c):
@@ -73,7 +73,7 @@ def _pdc_boiler_ready_for_antileg_hold(target_c):
     s5 = state.temps.get('S5')
     if s4 is None or s5 is None:
         return False
-    return s4 >= target_c and s5 >= target_c
+    return s4 >= target_c and s5 >= config.ANTILEGIONELLA_BOTTOM_READY_C
 
 
 def _pause_antileg_timer():
@@ -114,9 +114,9 @@ def run_once(sensor_mgr, actuator_mgr):
     state.cr_emerg_mode = emerg
 
     # Gestione timer antilegionella:
-    # 1) porta il boiler PDC a target: S5>=target e S4>=target+offset
+    # 1) porta il boiler PDC alla soglia antileg: S4>=target e S5>=68 C
     # 2) attiva CR
-    # 3) mantiene il boiler PDC a target per la finestra richiesta
+    # 3) mantiene il boiler PDC sopra la stessa soglia per la finestra richiesta
     if antileg_mode:
         target_c = _get_antileg_target_c()
         start_ready = _pdc_boiler_ready_for_antileg_start(target_c)
