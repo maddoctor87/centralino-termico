@@ -20,6 +20,7 @@ FILES=(
     control_panels.py
     control_c2.py
     control_recirc.py
+    control_block2_pool_heat_pdc.py
     control_aux.py
     comms_mqtt.py
     diagnostics.py

@@ -97,6 +97,12 @@ def run_once(sensor_mgr, actuator_mgr):
         actuator_mgr.set_relay('CR', state.manual_relays.get('CR', False))
         return
 
+    if not state.all_temps_present():
+        state.cr_on_state = False
+        state.cr_emerg_mode = False
+        actuator_mgr.set_relay('CR', config.SAFE_RELAY_STATE)
+        return
+
     s6 = state.temps.get('S6')
     s7 = state.temps.get('S7')
     valid = [t for t in (s6, s7) if t is not None]

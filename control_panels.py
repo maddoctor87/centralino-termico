@@ -254,6 +254,7 @@ def run_once(sensor_mgr, actuator_mgr):
     s2 = temps.get("S2")
     s3 = temps.get("S3")
     s4 = temps.get("S4")
+    all_sensors_ok = state.all_temps_present()
 
     panels_ok = all(_is_valid_temp(v) for v in (s1, s2, s3))
     s4_ok = _is_valid_temp(s4)
@@ -261,8 +262,8 @@ def run_once(sensor_mgr, actuator_mgr):
     _set_alarm("ALARM_SENSORS_PANELS", not panels_ok)
     _set_alarm("ALARM_S4_INVALID", not s4_ok)
 
-    # Se sensori critici mancanti, fermo C1
-    if not panels_ok or not s4_ok:
+    # Safety globale: in automatico, se manca anche una sola sonda, tutto OFF.
+    if not all_sensors_ok or not panels_ok or not s4_ok:
         actuator_mgr.set_c1_wilo_duty(config.C1_WILO_STANDBY_DUTY_PCT)
         _set_c1_active(False)
         return

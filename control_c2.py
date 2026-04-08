@@ -113,6 +113,12 @@ def run_once(sensor_mgr, actuator_mgr, input_mgr=None):
         _check_c2_feedback(input_mgr, manual_value)
         return
 
+    if not state.all_temps_present():
+        actuator_mgr.set_relay('C2', config.SAFE_RELAY_STATE)
+        state.c2_on_state = False
+        _check_c2_feedback(input_mgr, False)
+        return
+
     # Sensori richiesti
     required = ('S1', 'S2', 'S3', 'S4', 'S5')
     missing = [label for label in required if state.temps.get(label) is None]

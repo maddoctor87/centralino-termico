@@ -249,6 +249,27 @@ class Block2Controller:
             self._set_manual_outputs(actuator_mgr)
             return
 
+        if not state.all_temps_present():
+            self.gas_off_timer = 0
+            self.valve_off_timer = 0
+            self.pdc_cmd_hold_timer = 0
+            self.c2_work_start = None
+            self.acs_work_start = None
+            self.acs_help_start = None
+            actuator_mgr.set_relay('GAS_ENABLE', False)
+            actuator_mgr.set_relay('VALVE', False)
+            actuator_mgr.set_relay('PDC_CMD_START_ACR', False)
+            actuator_mgr.set_relay('HEAT_PUMP', False)
+            actuator_mgr.set_relay('PISCINA_PUMP', False)
+            self._publish_outputs({
+                'gas_enable': False,
+                'valve': False,
+                'pdc_cmd_start_acr': False,
+                'heat_pump': False,
+                'piscina_pump': False,
+            })
+            return
+
         now = time.time()
         self._update_acs_timers(inputs, now)
         prefer_solar = self._prefer_solar_over_gas(inputs)

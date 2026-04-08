@@ -269,6 +269,15 @@ def refresh_sensor_alarms():
     alarms['ALARM_S4_INVALID'] = temps.get('S4') is None
 
 
+def missing_temp_labels(required=None):
+    labels = required if required is not None else config.SENSOR_LABELS
+    return [label for label in labels if temps.get(label) is None]
+
+
+def all_temps_present(required=None):
+    return not missing_temp_labels(required)
+
+
 # ── Ingressi ──────────────────────────────────────────────────────────────────
 
 def set_input(name, value):
