@@ -2,7 +2,11 @@ DEVICE_ID = "esp32_sonde_temp_1"
 MQTT_CLIENT_ID = DEVICE_ID
 
 WIFI_SSID = "ITINERIS-Resort"
-WIFI_PASSWORD = ""
+WIFI_PASSWORD = "1t1n3r152025"
+WIFI_STATIC_IP = "192.168.10.200"
+WIFI_NETMASK = "255.255.255.0"
+WIFI_GATEWAY = "192.168.10.1"
+WIFI_DNS = "192.168.10.1"
 
 # Allineato al broker MQTT del progetto su sstit / rete centrale termica.
 MQTT_BROKER = "192.168.10.20"
@@ -24,6 +28,10 @@ READ_INTERVAL_SEC = 15
 CONVERSION_WAIT_MS = 750
 WIFI_CONNECT_TIMEOUT_S = 20
 WIFI_RETRY_INTERVAL_S = 30
+WIFI_RESET_ON_RECONNECT = True
+SCAN_RETRIES = 3
+SCAN_RETRY_DELAY_MS = 200
+SENSOR_MISS_TOLERANCE = 3
 
 # Etichette logiche del progetto centrale termica.
 SENSOR_LABELS = ("S1", "S2", "S3", "S4", "S5", "S6", "S7")
@@ -37,14 +45,12 @@ SENSOR_DESCRIPTIONS = {
     "S7": "collettore ricircolo fine",
 }
 
-# Popolare dopo il primo scan MQTT: chiave ROM hex lowercase -> label S1..S7.
 ROM_LABELS = {
-    # "28ff641d7216035c": "S1",
-    "280333bb00000088":"S1",
-    "28f88cbc000000a4":"S3",
-    "284affba000000e7":"S2",
-    "286ceebe0000005c":"S4",
-    "28b470bb000000ad":"S5",
-    "28fbebbc000000bd":"S6",
-    "28a28abf00000051":"S7",
+    "280333bb00000088": "S1",
+    "28f88cbc000000a4": "S3",
+    "284affba000000e7": "S2",
+    "286ceebe0000005c": "S4",
+    "28b470bb000000ad": "S5",
+    "28fbebbc000000bd": "S6",
+    "28a28abf00000051": "S7",
 }
