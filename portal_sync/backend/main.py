@@ -10,6 +10,7 @@ import time
 import threading
 import logging
 import hmac
+import hashlib
 import json
 import secrets
 import jwt  # PyJWT
@@ -217,6 +218,16 @@ def _bool_env(name: str, default: bool = False) -> bool:
     return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
 
+ACS_OTA_BASE_URL = (os.environ.get("ACS_OTA_BASE_URL") or "").rstrip("/")
+ACS_OTA_RELEASE_VERSION = (os.environ.get("ACS_OTA_RELEASE_VERSION") or "").strip() or None
+ACS_OTA_APP_BIN_FILE = (os.environ.get("ACS_OTA_APP_BIN_FILE") or "").strip()
+ACS_OTA_APP_BIN_URL = (os.environ.get("ACS_OTA_APP_BIN_URL") or "").strip()
+ACS_OTA_PROXY_TIMEOUT_S = max(5, _int_env("ACS_OTA_PROXY_TIMEOUT_S", 60))
+ACS_OTA_ROOT = Path(
+    os.environ.get("ACS_OTA_ROOT", str(Path(__file__).resolve().parents[2]))
+).resolve()
+
+
 HOTSPOT_HOST = os.environ.get("HOTSPOT_HOST")
 HOTSPOT_USER = os.environ.get("HOTSPOT_USER")
 HOTSPOT_PASS = os.environ.get("HOTSPOT_PASS")
@@ -280,6 +291,7 @@ device_bridge: DeviceMQTTBridge | None = None
 acs_store = acs_module.ACSStore()
 acs_bridge: acs_module.ACSMQTTBridge | None = None
 acs_antileg_scheduler: acs_module.ACSAntilegScheduler | None = None
+acs_night_eco_scheduler: acs_module.ACSNightEcoScheduler | None = None
 energy_guard_thread: threading.Thread | None = None
 energy_guard_stop = threading.Event()
 energy_history_thread: threading.Thread | None = None
@@ -2018,13 +2030,138 @@ def hotspot_login(body: HotspotLoginRequest):
 ultima_lettura = {"conducibilita": None, "timestamp": None}
 
 
+def _require_device_api_key(x_api_key: str | None) -> None:
+    if not DEVICE_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="DEVICE_API_KEY not configured",
+        )
+    if not x_api_key or not hmac.compare_digest(x_api_key, DEVICE_API_KEY):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key",
+        )
+
+
+def _acs_ota_base_url_from_request(request: Request) -> str:
+    if ACS_OTA_BASE_URL:
+        return ACS_OTA_BASE_URL
+    base_url = str(request.base_url).rstrip("/")
+    if not base_url.startswith("http://"):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ACS_OTA_BASE_URL deve essere configurato con un URL http:// raggiungibile dal PLC",
+        )
+    return base_url
+
+
+def _acs_ota_app_bin_name(name: str) -> str:
+    base = Path(str(name or "").strip()).name
+    if base.endswith(".app-bin"):
+        return base
+    if base.endswith(".bin"):
+        return base[:-4] + ".app-bin"
+    raise ValueError("Firmware OTA non valido")
+
+
+def _acs_ota_default_repo_source() -> dict | None:
+    app_bins = sorted(ACS_OTA_ROOT.glob("ESP32_GENERIC-OTA-*.app-bin"))
+    if app_bins:
+        path = app_bins[-1]
+        return {"kind": "local", "path": path, "name": path.name}
+
+    ota_bins = sorted(ACS_OTA_ROOT.glob("ESP32_GENERIC-OTA-*.bin"))
+    if ota_bins:
+        name = ota_bins[-1].name
+        return {
+            "kind": "remote",
+            "url": "https://micropython.org/resources/firmware/{}".format(
+                _acs_ota_app_bin_name(name)
+            ),
+            "name": _acs_ota_app_bin_name(name),
+            "origin": name,
+        }
+    return None
+
+
+def _acs_ota_source() -> dict:
+    if ACS_OTA_APP_BIN_FILE:
+        path = Path(ACS_OTA_APP_BIN_FILE)
+        if not path.is_absolute():
+            path = ACS_OTA_ROOT / path
+        path = path.resolve()
+        if not path.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"ACS_OTA_APP_BIN_FILE non trovato: {path}",
+            )
+        if not path.name.endswith(".app-bin"):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="ACS_OTA_APP_BIN_FILE deve puntare a un file .app-bin",
+            )
+        return {"kind": "local", "path": path, "name": path.name}
+
+    if ACS_OTA_APP_BIN_URL:
+        parsed = urllib.parse.urlparse(ACS_OTA_APP_BIN_URL)
+        name = Path(parsed.path).name or "firmware.app-bin"
+        return {"kind": "remote", "url": ACS_OTA_APP_BIN_URL, "name": name}
+
+    source = _acs_ota_default_repo_source()
+    if source is not None:
+        return source
+
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Configura ACS_OTA_APP_BIN_URL o ACS_OTA_APP_BIN_FILE per l'OTA firmware",
+    )
+
+
+def _acs_ota_release_version(source: dict) -> str:
+    if ACS_OTA_RELEASE_VERSION:
+        return ACS_OTA_RELEASE_VERSION
+
+    name = str(source.get("name") or "")
+    match = re.search(r"(v?\d+\.\d+\.\d+)", name)
+    if match:
+        return match.group(1).lstrip("v")
+
+    if name.endswith(".app-bin"):
+        name = name[:-8]
+    elif name.endswith(".bin"):
+        name = name[:-4]
+    return name or "ota-manual"
+
+
+def _sha1_for_file(path: Path) -> str:
+    digest = hashlib.sha1()
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(64 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _build_acs_ota_manifest(request: Request) -> dict:
+    source = _acs_ota_source()
+    manifest = {
+        "version": _acs_ota_release_version(source),
+        "firmware": "{}/api/device/acs/ota-firmware".format(
+            _acs_ota_base_url_from_request(request)
+        ),
+    }
+    if source["kind"] == "local":
+        manifest["length"] = source["path"].stat().st_size
+        manifest["sha1"] = _sha1_for_file(source["path"])
+    return manifest
+
+
 # --- Ingest da dispositivo (role: dispositivi - via API key) ---
 @app.post("/api/lettura")
 async def ricevi_lettura(data: Lettura, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
-    if not DEVICE_API_KEY:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="DEVICE_API_KEY not configured")
-    if not x_api_key or not hmac.compare_digest(x_api_key, DEVICE_API_KEY):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+    _require_device_api_key(x_api_key)
     global ultima_lettura
     print(f"📥 Ricevuta conducibilità: {data.conducibilita:.0f} µS/cm alle {data.timestamp}")
     ultima_lettura = {"conducibilita": data.conducibilita, "timestamp": data.timestamp}
@@ -2035,6 +2172,69 @@ async def ricevi_lettura(data: Lettura, x_api_key: str | None = Header(default=N
 @app.get("/api/ultima-lettura")
 def get_ultima_lettura(user=Depends(require_role(["superad", "admin", "maintenance"]))):
     return ultima_lettura
+
+
+@app.get("/api/device/acs/ota-manifest")
+def acs_device_ota_manifest(
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _require_device_api_key(x_api_key)
+    return _build_acs_ota_manifest(request)
+
+
+def _proxy_acs_ota_firmware(source_url: str):
+    try:
+        upstream = requests.get(
+            source_url,
+            stream=True,
+            timeout=(10, ACS_OTA_PROXY_TIMEOUT_S),
+            allow_redirects=True,
+        )
+    except requests.RequestException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Download OTA upstream fallito: {exc}",
+        ) from exc
+
+    if upstream.status_code != 200:
+        detail = f"OTA upstream HTTP {upstream.status_code}"
+        upstream.close()
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail)
+
+    headers = {
+        "Cache-Control": "no-store",
+        "Content-Type": upstream.headers.get("Content-Type", "application/octet-stream"),
+    }
+    content_length = upstream.headers.get("Content-Length")
+    if content_length:
+        headers["Content-Length"] = content_length
+
+    def _stream():
+        try:
+            for chunk in upstream.iter_content(chunk_size=64 * 1024):
+                if chunk:
+                    yield chunk
+        finally:
+            upstream.close()
+
+    return StreamingResponse(_stream(), headers=headers)
+
+
+@app.get("/api/device/acs/ota-firmware")
+def acs_device_ota_firmware(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _require_device_api_key(x_api_key)
+    source = _acs_ota_source()
+    if source["kind"] == "local":
+        return FileResponse(
+            source["path"],
+            media_type="application/octet-stream",
+            filename=source["name"],
+            headers={"Cache-Control": "no-store"},
+        )
+    return _proxy_acs_ota_firmware(source["url"])
 
 
 # --- Event registry APIs ---
@@ -3447,6 +3647,7 @@ def _startup():
     # --- ACS bridge ---
     global acs_bridge
     global acs_antileg_scheduler
+    global acs_night_eco_scheduler
     _acs_br = acs_module.ACSMQTTBridge(acs_store, DEVICE_MQTT_SETTINGS)
     acs_bridge = _acs_br
     _acs_br.start()
@@ -3456,6 +3657,12 @@ def _startup():
         APP_TIMEZONE,
     )
     acs_antileg_scheduler.start()
+    acs_night_eco_scheduler = acs_module.ACSNightEcoScheduler(
+        _publish_acs_cmd,
+        acs_store.snapshot,
+        APP_TIMEZONE,
+    )
+    acs_night_eco_scheduler.start()
 
     global energy_guard_thread
     global energy_history_thread
@@ -3485,6 +3692,8 @@ def _startup():
 def _shutdown():
     if device_bridge:
         device_bridge.stop()
+    if acs_night_eco_scheduler:
+        acs_night_eco_scheduler.stop()
     if acs_antileg_scheduler:
         acs_antileg_scheduler.stop()
     if acs_bridge:
@@ -3514,6 +3723,24 @@ def acs_get_state(user=Depends(require_role(acs_module.ACS_ROLES))):
             "time_hhmm": "03:00",
             "next_run_at": None,
             "last_trigger_at": None,
+            "last_result": None,
+        }
+    )
+    data["night_eco"] = (
+        acs_night_eco_scheduler.snapshot()
+        if acs_night_eco_scheduler
+        else {
+            "enabled": False,
+            "start_hhmm": "23:00",
+            "end_hhmm": "06:00",
+            "day_pdc_target_c": 50.0,
+            "night_pdc_target_c": 45.0,
+            "day_recirc_target_c": 45.0,
+            "night_recirc_target_c": 40.0,
+            "active_mode": "day",
+            "night_active": False,
+            "last_applied_mode": None,
+            "last_applied_at": None,
             "last_result": None,
         }
     )
@@ -3578,6 +3805,55 @@ class ACSPoolJustFilledIn(BaseModel):
     enabled: bool
 
 
+class ACSNightEcoIn(BaseModel):
+    enabled: bool
+    start_hhmm: str
+    end_hhmm: str
+    day_pdc_target_c: float
+    night_pdc_target_c: float
+    day_recirc_target_c: float
+    night_recirc_target_c: float
+
+
+class ACSOTAIn(BaseModel):
+    force: bool = False
+
+
+@app.post("/api/acs/ota")
+def acs_trigger_ota(
+    body: ACSOTAIn,
+    request: Request,
+    user=Depends(require_role(acs_module.ACS_ROLES)),
+):
+    if not acs_bridge:
+        raise HTTPException(status_code=503, detail="ACS bridge non avviato")
+    if not DEVICE_API_KEY:
+        raise HTTPException(status_code=503, detail="DEVICE_API_KEY non configurata")
+
+    manifest = _build_acs_ota_manifest(request)
+    target_version = str(manifest.get("version") or "ota-manual")
+    manifest_url = "{}/api/device/acs/ota-manifest".format(
+        _acs_ota_base_url_from_request(request)
+    )
+    cmd = {
+        "manifest_url": manifest_url,
+        "headers": {"X-API-Key": DEVICE_API_KEY},
+        "target_version": target_version,
+        "force": bool(body.force),
+    }
+    ok = acs_bridge.publish_cmd({"ota": cmd})
+    if not ok:
+        raise HTTPException(status_code=503, detail="Publish MQTT fallito")
+    return {
+        "ok": True,
+        "ota": {
+            "target_version": target_version,
+            "manifest_url": manifest_url,
+            "force": bool(body.force),
+        },
+    }
+
+
 @app.post("/api/acs/manual-mode")
 def acs_set_manual_mode(body: ACSManualModeIn, user=Depends(require_role(acs_module.ACS_ROLES))):
     if not acs_bridge:
@@ -3626,6 +3902,25 @@ def acs_set_pool_just_filled(body: ACSPoolJustFilledIn, user=Depends(require_rol
     if not ok:
         raise HTTPException(status_code=503, detail="Publish MQTT fallito")
     return {"ok": True, "pool_just_filled": body.enabled}
+
+
+@app.post("/api/acs/night-eco")
+def acs_set_night_eco(body: ACSNightEcoIn, user=Depends(require_role(acs_module.ACS_ROLES))):
+    if not acs_night_eco_scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler eco notte non avviato")
+    try:
+        schedule = acs_night_eco_scheduler.update_config(
+            enabled=body.enabled,
+            start_hhmm=body.start_hhmm,
+            end_hhmm=body.end_hhmm,
+            day_pdc_target_c=body.day_pdc_target_c,
+            night_pdc_target_c=body.night_pdc_target_c,
+            day_recirc_target_c=body.day_recirc_target_c,
+            night_recirc_target_c=body.night_recirc_target_c,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "night_eco": schedule}
 
 
 # --- Tasks APIs ---

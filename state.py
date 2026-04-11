@@ -1,6 +1,7 @@
 # --- state.py ---
 # Stato globale condiviso tra tutti i moduli.
 
+import os
 import time
 
 try:
@@ -107,6 +108,67 @@ antileg_hold_start = None
 antileg_hold_elapsed_s = 0
 antileg_phase = 'idle'
 
+
+def _runtime_uname():
+    try:
+        return os.uname()
+    except Exception:
+        return None
+
+
+def _runtime_firmware_version():
+    uname = _runtime_uname()
+    release = getattr(uname, 'release', None) if uname is not None else None
+    value = str(release or 'unknown')
+    if value.startswith('v') and len(value) > 1 and value[1].isdigit():
+        return value[1:]
+    return value
+
+
+def _runtime_firmware_build():
+    uname = _runtime_uname()
+    version = getattr(uname, 'version', None) if uname is not None else None
+    return str(version or _runtime_firmware_version())
+
+
+def _runtime_partition_label():
+    try:
+        import esp32
+
+        info = esp32.Partition(esp32.Partition.RUNNING).info()
+        if len(info) >= 5 and info[4]:
+            label = info[4]
+            if isinstance(label, bytes):
+                label = label.decode('utf-8')
+            return str(label)
+    except Exception:
+        pass
+    return None
+
+
+# ── OTA firmware ──────────────────────────────────────────────────────────────
+ota_request = None
+ota = {
+    'enabled': bool(getattr(config, 'OTA_ENABLED', False)),
+    'current_version': _runtime_firmware_version(),
+    'current_build': _runtime_firmware_build(),
+    'current_partition': _runtime_partition_label(),
+    'state': 'idle',
+    'message': None,
+    'target_version': None,
+    'manifest_url': None,
+    'firmware_url': None,
+    'target_partition': None,
+    'bytes_written': 0,
+    'total_bytes': 0,
+    'started_at': None,
+    'finished_at': None,
+    'last_error': None,
+    'last_result': None,
+    'last_success_version': None,
+    'last_success_partition': None,
+}
+
 # ── Snapshot ts ───────────────────────────────────────────────────────────────
 last_snapshot_ts = 0
 
@@ -145,6 +207,21 @@ def _save_settings():
         fp.write(json.dumps({'setpoints': setpoints}))
 
 
+def _save_ota_status():
+    payload = {
+        'target_version': ota.get('target_version'),
+        'target_partition': ota.get('target_partition'),
+        'finished_at': ota.get('finished_at'),
+        'last_error': ota.get('last_error'),
+        'last_result': ota.get('last_result'),
+        'last_success_version': ota.get('last_success_version'),
+        'last_success_partition': ota.get('last_success_partition'),
+        'message': ota.get('message'),
+    }
+    with open(config.OTA_STATUS_FILE, 'w') as fp:
+        fp.write(json.dumps(payload))
+
+
 def load_settings():
     try:
         with open(config.SETPOINTS_FILE, 'r') as fp:
@@ -178,6 +255,38 @@ def save_settings():
     except Exception as e:
         print('[state] save error:', e)
         return False
+
+
+def load_ota_status():
+    try:
+        with open(config.OTA_STATUS_FILE, 'r') as fp:
+            payload = json.loads(fp.read())
+    except Exception:
+        return False
+
+    if not isinstance(payload, dict):
+        return False
+
+    for key in (
+        'target_version',
+        'target_partition',
+        'finished_at',
+        'last_error',
+        'last_result',
+        'last_success_version',
+        'last_success_partition',
+        'message',
+    ):
+        if key in payload:
+            ota[key] = payload.get(key)
+    refresh_ota_runtime_info()
+    ota['state'] = 'idle'
+    ota['manifest_url'] = None
+    ota['firmware_url'] = None
+    ota['bytes_written'] = 0
+    ota['total_bytes'] = 0
+    ota['started_at'] = None
+    return True
 
 
 # ── Temperature ───────────────────────────────────────────────────────────────
@@ -415,6 +524,42 @@ def get_setpoint(name, default=None):
     return setpoints.get(name, default)
 
 
+def refresh_ota_runtime_info():
+    ota['current_version'] = _runtime_firmware_version()
+    ota['current_build'] = _runtime_firmware_build()
+    ota['current_partition'] = _runtime_partition_label()
+    return ota_snapshot()
+
+
+def queue_ota_request(payload):
+    global ota_request
+    ota_request = dict(payload) if isinstance(payload, dict) else {}
+
+
+def pop_ota_request():
+    global ota_request
+    payload = ota_request
+    ota_request = None
+    return payload
+
+
+def set_ota_status(state_name=None, persist=False, **fields):
+    if state_name is not None:
+        ota['state'] = str(state_name)
+    for key, value in fields.items():
+        if key in ota:
+            ota[key] = value
+    if persist:
+        try:
+            _save_ota_status()
+        except Exception as e:
+            print('[state] ota save error:', e)
+
+
+def ota_snapshot():
+    return dict(ota)
+
+
 # ── Snapshot ──────────────────────────────────────────────────────────────────
 
 def snapshot():
@@ -450,6 +595,9 @@ def snapshot():
         'c2_fb_alarm': c2_fb_alarm,
         'cr_emerg': cr_emerg_mode,
         'block2_outputs': dict(block2_outputs),
+        'firmware_build': ota.get('current_build'),
+        'firmware_version': ota.get('current_version'),
+        'ota': ota_snapshot(),
         'antileg_ok': antileg_ok,
         'antileg_ok_ts': antileg_ok_ts,
         'antileg_request': antileg_request,
@@ -459,3 +607,6 @@ def snapshot():
         'temp_remote_payload_ts': temp_remote_payload_ts,
         'temp_remote_topic': temp_remote_topic,
     }
+
+
+load_ota_status()

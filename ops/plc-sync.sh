@@ -24,6 +24,7 @@ FILES=(
     control_aux.py
     comms_mqtt.py
     diagnostics.py
+    ota_update.py
     state.py
 )
 

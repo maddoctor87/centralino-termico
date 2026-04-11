@@ -257,6 +257,25 @@ def _on_cmd(topic, msg):
                     except Exception:
                         pass
 
+        ota_cmd = d.get('ota')
+        if isinstance(ota_cmd, dict):
+            state.queue_ota_request(ota_cmd)
+            state.set_ota_status(
+                'queued',
+                message='Richiesta OTA ricevuta',
+                target_version=ota_cmd.get('target_version'),
+                manifest_url=ota_cmd.get('manifest_url'),
+                firmware_url=None,
+                target_partition=None,
+                bytes_written=0,
+                total_bytes=0,
+                started_at=None,
+                finished_at=None,
+                last_error=None,
+                last_result=None,
+            )
+            print('[mqtt] ota request = {}'.format(ota_cmd.get('target_version') or ota_cmd.get('manifest_url')))
+
         state.last_snapshot_ts = 0  # forza publish immediato
     except Exception as e:
         print('[mqtt] on_cmd error:', e)

@@ -160,9 +160,103 @@ const ANTILEG_WEEKDAYS = [
   { value: 5, label: "Sabato" },
   { value: 6, label: "Domenica" },
 ];
+const NIGHT_ECO_DEFAULT = {
+  enabled: false,
+  start_hhmm: "23:00",
+  end_hhmm: "06:00",
+  day_pdc_target_c: 50,
+  night_pdc_target_c: 45,
+  day_recirc_target_c: 45,
+  night_recirc_target_c: 40,
+  active_mode: "day",
+  night_active: false,
+  last_applied_mode: null,
+  last_applied_at: null,
+  last_result: null,
+};
 
 function hasOwn(obj, key) {
   return !!obj && Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function normalizeNightEco(value) {
+  const data = value && typeof value === "object" ? value : {};
+  const numOr = (raw, fallback) => {
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : fallback;
+  };
+  return {
+    enabled: Boolean(data.enabled),
+    start_hhmm: String(data.start_hhmm || NIGHT_ECO_DEFAULT.start_hhmm),
+    end_hhmm: String(data.end_hhmm || NIGHT_ECO_DEFAULT.end_hhmm),
+    day_pdc_target_c: numOr(
+      data.day_pdc_target_c,
+      NIGHT_ECO_DEFAULT.day_pdc_target_c,
+    ),
+    night_pdc_target_c: numOr(
+      data.night_pdc_target_c,
+      NIGHT_ECO_DEFAULT.night_pdc_target_c,
+    ),
+    day_recirc_target_c: numOr(
+      data.day_recirc_target_c,
+      NIGHT_ECO_DEFAULT.day_recirc_target_c,
+    ),
+    night_recirc_target_c: numOr(
+      data.night_recirc_target_c,
+      NIGHT_ECO_DEFAULT.night_recirc_target_c,
+    ),
+    active_mode:
+      data.active_mode === "night" ? "night" : NIGHT_ECO_DEFAULT.active_mode,
+    night_active: Boolean(data.night_active),
+    last_applied_mode:
+      data.last_applied_mode === "night" || data.last_applied_mode === "day"
+        ? data.last_applied_mode
+        : null,
+    last_applied_at: Number.isFinite(Number(data.last_applied_at))
+      ? Number(data.last_applied_at)
+      : null,
+    last_result: data.last_result ? String(data.last_result) : null,
+  };
+}
+
+function normalizeOtaStatus(value) {
+  const data = value && typeof value === "object" ? value : {};
+  const numOrNull = (raw) => {
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : null;
+  };
+  return {
+    enabled: Boolean(data.enabled),
+    current_version: data.current_version ? String(data.current_version) : "unknown",
+    current_build: data.current_build ? String(data.current_build) : null,
+    current_partition: data.current_partition
+      ? String(data.current_partition)
+      : null,
+    state: data.state ? String(data.state) : "idle",
+    message: data.message ? String(data.message) : null,
+    target_version: data.target_version ? String(data.target_version) : null,
+    manifest_url: data.manifest_url ? String(data.manifest_url) : null,
+    firmware_url: data.firmware_url ? String(data.firmware_url) : null,
+    target_partition: data.target_partition
+      ? String(data.target_partition)
+      : null,
+    bytes_written: Number.isFinite(Number(data.bytes_written))
+      ? Number(data.bytes_written)
+      : 0,
+    total_bytes: Number.isFinite(Number(data.total_bytes))
+      ? Number(data.total_bytes)
+      : 0,
+    started_at: numOrNull(data.started_at),
+    finished_at: numOrNull(data.finished_at),
+    last_error: data.last_error ? String(data.last_error) : null,
+    last_result: data.last_result ? String(data.last_result) : null,
+    last_success_version: data.last_success_version
+      ? String(data.last_success_version)
+      : null,
+    last_success_partition: data.last_success_partition
+      ? String(data.last_success_partition)
+      : null,
+  };
 }
 
 function clampPct(value) {
@@ -241,6 +335,14 @@ function formatAgo(ts) {
 function formatDate(ts) {
   if (!ts) return "—";
   return new Date(ts * 1000).toLocaleString("it-IT");
+}
+
+function formatBytes(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "—";
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MiB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${Math.round(bytes)} B`;
 }
 
 function formatHistoryTime(ts) {
@@ -539,6 +641,126 @@ function RuntimeStatusCard() {
   );
 }
 
+function FirmwareOTACard({ online, firmwareVersion, ota, busy, onStart }) {
+  const activeStates = new Set([
+    "queued",
+    "downloading",
+    "writing",
+    "applying",
+    "restarting",
+  ]);
+  const active = activeStates.has(ota.state);
+  const tone =
+    ota.state === "error"
+      ? "var(--danger)"
+      : active
+        ? "var(--warn)"
+        : "var(--ok)";
+  const progressLabel =
+    ota.total_bytes > 0
+      ? `${formatBytes(ota.bytes_written)} / ${formatBytes(ota.total_bytes)}`
+      : ota.bytes_written > 0
+        ? formatBytes(ota.bytes_written)
+        : "—";
+
+  return (
+    <div
+      className="card"
+      style={{
+        padding: "14px 16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div>
+        <div style={{ fontWeight: 700 }}>Aggiornamento firmware OTA</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+          Il PLC scarica un firmware <code>.app-bin</code> via backend ACS, lo
+          scrive nella partizione OTA successiva e poi si riavvia. Avvia
+          l&apos;update solo in una finestra operativa sicura.
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12 }}>
+        <div>
+          <div style={{ color: "var(--text-muted)" }}>Versione PLC</div>
+          <div style={{ fontWeight: 700 }}>{firmwareVersion || "unknown"}</div>
+        </div>
+        <div>
+          <div style={{ color: "var(--text-muted)" }}>Partizione attiva</div>
+          <div style={{ fontWeight: 700 }}>{ota.current_partition || "—"}</div>
+        </div>
+        <div>
+          <div style={{ color: "var(--text-muted)" }}>Stato OTA</div>
+          <div style={{ fontWeight: 700, color: tone }}>{ota.state || "idle"}</div>
+        </div>
+        <div>
+          <div style={{ color: "var(--text-muted)" }}>Target</div>
+          <div style={{ fontWeight: 700 }}>{ota.target_version || "—"}</div>
+        </div>
+        <div>
+          <div style={{ color: "var(--text-muted)" }}>Download</div>
+          <div style={{ fontWeight: 700 }}>{progressLabel}</div>
+        </div>
+      </div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+        {ota.message || "Backend pronto a servire il firmware OTA corrente."}
+      </div>
+      {ota.target_partition && (
+        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+          Partizione target: <code>{ota.target_partition}</code>
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12 }}>
+        <div>
+          <div style={{ color: "var(--text-muted)" }}>Inizio</div>
+          <div style={{ fontWeight: 700 }}>{formatDate(ota.started_at)}</div>
+        </div>
+        <div>
+          <div style={{ color: "var(--text-muted)" }}>Fine</div>
+          <div style={{ fontWeight: 700 }}>{formatDate(ota.finished_at)}</div>
+        </div>
+        <div>
+          <div style={{ color: "var(--text-muted)" }}>Ultimo esito</div>
+          <div
+            style={{
+              fontWeight: 700,
+              color:
+                ota.last_result === "error"
+                  ? "var(--danger)"
+                  : ota.last_result === "success"
+                    ? "var(--ok)"
+                    : "var(--text)",
+            }}
+          >
+            {ota.last_result || "—"}
+          </div>
+        </div>
+      </div>
+      {ota.last_error && (
+        <div style={{ fontSize: 12, color: "var(--danger)" }}>
+          Ultimo errore: {ota.last_error}
+        </div>
+      )}
+      {ota.last_success_partition && (
+        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+          Ultima partizione valida: <code>{ota.last_success_partition}</code>
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={!online || busy || active || !ota.enabled}
+          onClick={onStart}
+        >
+          {busy ? "..." : "Avvia OTA dal backend"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RelayControlCard({
   name,
   meta,
@@ -765,6 +987,8 @@ export default function CentraleTermicaACSPage() {
     ANTILEG_SCHEDULE_DEFAULT,
   );
   const [antilegScheduleDirty, setAntilegScheduleDirty] = useState(false);
+  const [nightEcoDraft, setNightEcoDraft] = useState(NIGHT_ECO_DEFAULT);
+  const [nightEcoDirty, setNightEcoDirty] = useState(false);
   const [pwmDraft, setPwmDraft] = useState("");
   const [setpointDrafts, setSetpointDrafts] = useState({});
 
@@ -865,6 +1089,11 @@ export default function CentraleTermicaACSPage() {
     setAntilegScheduleDraft(normalizeAntilegSchedule(data.antileg_schedule));
   }, [data, antilegScheduleDirty]);
 
+  useEffect(() => {
+    if (!data?.night_eco || nightEcoDirty) return;
+    setNightEcoDraft(normalizeNightEco(data.night_eco));
+  }, [data, nightEcoDirty]);
+
   const postCommand = useCallback(
     async (key, url, body, successMsg) => {
       setBusyKey(key);
@@ -921,6 +1150,37 @@ export default function CentraleTermicaACSPage() {
       setCmdMsg("Errore di rete nel comando.");
     } finally {
       setAntilegPending(false);
+    }
+  };
+
+  const sendOta = async () => {
+    setCmdMsg("");
+    setBusyKey("ota");
+    try {
+      const res = await fetch("/api/acs/ota", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${getToken()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ force: false }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCmdMsg(`Errore: ${payload.detail || res.status}`);
+        return;
+      }
+      const targetVersion = payload?.ota?.target_version;
+      setCmdMsg(
+        targetVersion
+          ? `OTA firmware accodata verso ${targetVersion}.`
+          : "OTA accodata al PLC.",
+      );
+      fetchState(true);
+    } catch (_err) {
+      setCmdMsg("Errore di rete nel comando.");
+    } finally {
+      setBusyKey("");
     }
   };
 
@@ -1035,6 +1295,82 @@ export default function CentraleTermicaACSPage() {
     }
   };
 
+  const sendNightEcoSchedule = async () => {
+    const start_hhmm = String(nightEcoDraft.start_hhmm || "").trim();
+    const end_hhmm = String(nightEcoDraft.end_hhmm || "").trim();
+    const matchStart = /^(\d{2}):(\d{2})$/.exec(start_hhmm);
+    const matchEnd = /^(\d{2}):(\d{2})$/.exec(end_hhmm);
+    if (!matchStart || !matchEnd) {
+      setCmdMsg("Errore: orario eco notte non valido.");
+      return;
+    }
+    const startHours = Number(matchStart[1]);
+    const startMinutes = Number(matchStart[2]);
+    const endHours = Number(matchEnd[1]);
+    const endMinutes = Number(matchEnd[2]);
+    if (
+      !Number.isInteger(startHours) ||
+      !Number.isInteger(startMinutes) ||
+      !Number.isInteger(endHours) ||
+      !Number.isInteger(endMinutes) ||
+      startHours < 0 ||
+      startHours > 23 ||
+      endHours < 0 ||
+      endHours > 23 ||
+      startMinutes < 0 ||
+      startMinutes > 59 ||
+      endMinutes < 0 ||
+      endMinutes > 59
+    ) {
+      setCmdMsg("Errore: orario eco notte non valido.");
+      return;
+    }
+
+    const values = {
+      day_pdc_target_c: Number(nightEcoDraft.day_pdc_target_c),
+      night_pdc_target_c: Number(nightEcoDraft.night_pdc_target_c),
+      day_recirc_target_c: Number(nightEcoDraft.day_recirc_target_c),
+      night_recirc_target_c: Number(nightEcoDraft.night_recirc_target_c),
+    };
+    if (Object.values(values).some((value) => !Number.isFinite(value))) {
+      setCmdMsg("Errore: setpoint eco notte non validi.");
+      return;
+    }
+    if (start_hhmm === end_hhmm) {
+      setCmdMsg("Errore: inizio e fine fascia notte non possono coincidere.");
+      return;
+    }
+    if (values.night_pdc_target_c > values.day_pdc_target_c) {
+      setCmdMsg("Errore: target PDC notte deve essere <= del target giorno.");
+      return;
+    }
+    if (values.night_recirc_target_c > values.day_recirc_target_c) {
+      setCmdMsg(
+        "Errore: target ricircolo notte deve essere <= del target giorno.",
+      );
+      return;
+    }
+
+    const ok = await postCommand(
+      "night-eco",
+      "/api/acs/night-eco",
+      {
+        enabled: Boolean(nightEcoDraft.enabled),
+        start_hhmm,
+        end_hhmm,
+        day_pdc_target_c: values.day_pdc_target_c,
+        night_pdc_target_c: values.night_pdc_target_c,
+        day_recirc_target_c: values.day_recirc_target_c,
+        night_recirc_target_c: values.night_recirc_target_c,
+      },
+      "Programmazione eco notte aggiornata.",
+    );
+    if (ok) {
+      setNightEcoDirty(false);
+      fetchState(true);
+    }
+  };
+
   if (loading && !data) {
     return <div style={{ padding: 24 }}>Caricamento...</div>;
   }
@@ -1054,6 +1390,7 @@ export default function CentraleTermicaACSPage() {
   const relays = data?.relays ?? {};
   const relayAvailable = data?.relay_available ?? {};
   const manualRelays = data?.manual_relays ?? {};
+  const ota = normalizeOtaStatus(data?.ota);
   const setpoints = data?.setpoints ?? {};
   const setpointMeta = data?.setpoint_meta ?? {};
   const c1WiloDutyPct = data?.c1_wilo_duty_pct ?? data?.c1_duty ?? 0;
@@ -1073,7 +1410,15 @@ export default function CentraleTermicaACSPage() {
   const antilegOkTs = data?.antileg_ok_ts ?? null;
   const antilegRequest = data?.antileg_request ?? false;
   const antilegSchedule = normalizeAntilegSchedule(data?.antileg_schedule);
+  const nightEco = normalizeNightEco(data?.night_eco);
   const receivedAt = data?.received_at ?? null;
+  const firmwareVersion = String(
+    data?.firmware_build ??
+      ota.current_build ??
+      data?.firmware_version ??
+      ota.current_version ??
+      "unknown",
+  );
   const hasAlarm = Object.values(alarms).some(Boolean);
   const zones = ["solare", "pdc", "recirc"];
   const sensorsByZone = zones.reduce((acc, zone) => {
@@ -1151,6 +1496,13 @@ export default function CentraleTermicaACSPage() {
 
       <SectionTitle>Stato firmware</SectionTitle>
       <RuntimeStatusCard />
+      <FirmwareOTACard
+        online={online}
+        firmwareVersion={firmwareVersion}
+        ota={ota}
+        busy={busyKey === "ota"}
+        onStart={sendOta}
+      />
 
       <SectionTitle>Confronto solare / C1</SectionTitle>
       <div
@@ -1533,6 +1885,254 @@ export default function CentraleTermicaACSPage() {
             onApply={sendSetpoint}
           />
         ))}
+      </div>
+
+      <SectionTitle>Eco notte gas</SectionTitle>
+      <div
+        className="card"
+        style={{
+          padding: "14px 16px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: 16,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Profilo attivo
+            </div>
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 700,
+                color: nightEco.night_active ? "var(--warn)" : "var(--ok)",
+              }}
+            >
+              {nightEco.night_active ? "NOTTE ECO" : "GIORNO"}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Scheduler
+            </div>
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 700,
+                color: nightEco.enabled ? "var(--ok)" : "var(--text-muted)",
+              }}
+            >
+              {nightEco.enabled ? "ATTIVO" : "DISATTIVO"}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Ultima applicazione
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>
+              {nightEco.last_applied_at
+                ? formatDate(nightEco.last_applied_at)
+                : "—"}
+            </div>
+            {nightEco.last_result && (
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {nightEco.last_result}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: 10,
+            alignItems: "end",
+            borderTop: "1px solid var(--border)",
+            paddingTop: 10,
+          }}
+        >
+          <label
+            style={{ display: "flex", flexDirection: "column", gap: 6 }}
+          >
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Scheduler eco notte
+            </span>
+            <select
+              value={nightEcoDraft.enabled ? "1" : "0"}
+              onChange={(e) => {
+                setNightEcoDirty(true);
+                setNightEcoDraft((prev) => ({
+                  ...prev,
+                  enabled: e.target.value === "1",
+                }));
+              }}
+            >
+              <option value="0">Disattivato</option>
+              <option value="1">Attivato</option>
+            </select>
+          </label>
+
+          <label
+            style={{ display: "flex", flexDirection: "column", gap: 6 }}
+          >
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Inizio notte
+            </span>
+            <input
+              type="time"
+              value={nightEcoDraft.start_hhmm}
+              onChange={(e) => {
+                setNightEcoDirty(true);
+                setNightEcoDraft((prev) => ({
+                  ...prev,
+                  start_hhmm: e.target.value,
+                }));
+              }}
+            />
+          </label>
+
+          <label
+            style={{ display: "flex", flexDirection: "column", gap: 6 }}
+          >
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Fine notte
+            </span>
+            <input
+              type="time"
+              value={nightEcoDraft.end_hhmm}
+              onChange={(e) => {
+                setNightEcoDirty(true);
+                setNightEcoDraft((prev) => ({
+                  ...prev,
+                  end_hhmm: e.target.value,
+                }));
+              }}
+            />
+          </label>
+
+          <label
+            style={{ display: "flex", flexDirection: "column", gap: 6 }}
+          >
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              PDC giorno
+            </span>
+            <input
+              type="number"
+              step="0.5"
+              value={nightEcoDraft.day_pdc_target_c}
+              onChange={(e) => {
+                setNightEcoDirty(true);
+                setNightEcoDraft((prev) => ({
+                  ...prev,
+                  day_pdc_target_c: e.target.value,
+                }));
+              }}
+            />
+          </label>
+
+          <label
+            style={{ display: "flex", flexDirection: "column", gap: 6 }}
+          >
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              PDC notte
+            </span>
+            <input
+              type="number"
+              step="0.5"
+              value={nightEcoDraft.night_pdc_target_c}
+              onChange={(e) => {
+                setNightEcoDirty(true);
+                setNightEcoDraft((prev) => ({
+                  ...prev,
+                  night_pdc_target_c: e.target.value,
+                }));
+              }}
+            />
+          </label>
+
+          <label
+            style={{ display: "flex", flexDirection: "column", gap: 6 }}
+          >
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Ricircolo giorno
+            </span>
+            <input
+              type="number"
+              step="0.5"
+              value={nightEcoDraft.day_recirc_target_c}
+              onChange={(e) => {
+                setNightEcoDirty(true);
+                setNightEcoDraft((prev) => ({
+                  ...prev,
+                  day_recirc_target_c: e.target.value,
+                }));
+              }}
+            />
+          </label>
+
+          <label
+            style={{ display: "flex", flexDirection: "column", gap: 6 }}
+          >
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Ricircolo notte
+            </span>
+            <input
+              type="number"
+              step="0.5"
+              value={nightEcoDraft.night_recirc_target_c}
+              onChange={(e) => {
+                setNightEcoDirty(true);
+                setNightEcoDraft((prev) => ({
+                  ...prev,
+                  night_recirc_target_c: e.target.value,
+                }));
+              }}
+            />
+          </label>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busyKey === "night-eco"}
+            onClick={sendNightEcoSchedule}
+          >
+            {busyKey === "night-eco" ? "..." : "Salva eco notte"}
+          </button>
+        </div>
+
+        <div
+          style={{
+            fontSize: 12,
+            color: "var(--text-muted)",
+            borderTop: "1px solid var(--border)",
+            paddingTop: 8,
+          }}
+        >
+          Questa logica e lato portale Itineris: di notte abbassa i setpoint
+          del boiler PDC e del ricircolo per ridurre la probabilita di supporto
+          gas, poi al mattino ripristina i valori giorno. Il firmware PLC non
+          viene modificato.
+        </div>
       </div>
 
       <SectionTitle>Antilegionella</SectionTitle>

@@ -26,6 +26,12 @@ ACS_ANTILEG_SCHEDULE_FILE = Path(
 ACS_ANTILEG_SCHEDULE_POLL_S = max(
     10, int(os.environ.get("ACS_ANTILEG_SCHEDULE_POLL_S", "15"))
 )
+ACS_NIGHT_ECO_FILE = Path(
+    os.environ.get("ACS_NIGHT_ECO_FILE", "data/acs_night_eco.json")
+).resolve()
+ACS_NIGHT_ECO_POLL_S = max(
+    10, int(os.environ.get("ACS_NIGHT_ECO_POLL_S", "30"))
+)
 
 
 # ── Store thread-safe ─────────────────────────────────────────────────────────
@@ -84,6 +90,27 @@ class ACSStore:
             "heat_pump": False,
             "piscina_pump": False,
         },
+        "firmware_version": "unknown",
+        "ota": {
+            "enabled": False,
+            "current_version": "unknown",
+            "current_build": None,
+            "current_partition": None,
+            "state": "idle",
+            "message": None,
+            "target_version": None,
+            "manifest_url": None,
+            "firmware_url": None,
+            "target_partition": None,
+            "bytes_written": 0,
+            "total_bytes": 0,
+            "started_at": None,
+            "finished_at": None,
+            "last_error": None,
+            "last_result": None,
+            "last_success_version": None,
+            "last_success_partition": None,
+        },
         "antileg_ok": False,
         "antileg_ok_ts": None,
         "antileg_request": False,
@@ -108,7 +135,7 @@ class ACSStore:
 
         data = json.loads(json.dumps(self._EMPTY))
         for key, value in payload.items():
-            if key in {"temps", "alarms", "relays", "relay_available", "manual_relays", "setpoints", "setpoint_meta", "block2_outputs"}:
+            if key in {"temps", "alarms", "relays", "relay_available", "manual_relays", "setpoints", "setpoint_meta", "block2_outputs", "ota"}:
                 if isinstance(value, dict):
                     data[key].update(value)
                 continue
@@ -417,4 +444,303 @@ class ACSAntilegScheduler:
         return int(value)
 
 
-__all__ = ["ACSStore", "ACSMQTTBridge", "ACSAntilegScheduler", "ACS_ROLES"]
+class ACSNightEcoScheduler:
+    _DEFAULT: Dict[str, Any] = {
+        "enabled": False,
+        "start_hhmm": "23:00",
+        "end_hhmm": "06:00",
+        "day_pdc_target_c": 50.0,
+        "night_pdc_target_c": 45.0,
+        "day_recirc_target_c": 45.0,
+        "night_recirc_target_c": 40.0,
+        "last_applied_mode": None,
+        "last_applied_key": None,
+        "last_applied_at": None,
+        "last_result": None,
+    }
+
+    def __init__(self, publish_cmd, snapshot_fn, tzinfo) -> None:
+        self._publish_cmd = publish_cmd
+        self._snapshot_fn = snapshot_fn
+        self._tzinfo = tzinfo
+        self._lock = Lock()
+        self._stop = Event()
+        self._thread: Optional[Thread] = None
+        self._data: Dict[str, Any] = dict(self._DEFAULT)
+        self._load()
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = Thread(
+            target=self._loop,
+            name="acs-night-eco-scheduler",
+            daemon=True,
+        )
+        self._thread.start()
+        logger.info("ACSNightEcoScheduler avviato")
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=2.0)
+        self._thread = None
+
+    def update_config(
+        self,
+        *,
+        enabled: bool,
+        start_hhmm: str,
+        end_hhmm: str,
+        day_pdc_target_c: float,
+        night_pdc_target_c: float,
+        day_recirc_target_c: float,
+        night_recirc_target_c: float,
+    ) -> Dict[str, Any]:
+        normalized = {
+            "enabled": bool(enabled),
+            "start_hhmm": self._normalize_time_hhmm(start_hhmm),
+            "end_hhmm": self._normalize_time_hhmm(end_hhmm),
+            "day_pdc_target_c": self._normalize_target(day_pdc_target_c, low=20.0, high=95.0),
+            "night_pdc_target_c": self._normalize_target(night_pdc_target_c, low=20.0, high=95.0),
+            "day_recirc_target_c": self._normalize_target(day_recirc_target_c, low=20.0, high=80.0),
+            "night_recirc_target_c": self._normalize_target(night_recirc_target_c, low=20.0, high=80.0),
+        }
+        self._validate_targets(normalized)
+        with self._lock:
+            self._data.update(normalized)
+            self._data["last_applied_key"] = None
+            self._save_unlocked()
+
+        now_dt = datetime.now(self._tzinfo)
+        if normalized["enabled"]:
+            mode, trigger_key = self._current_mode_and_key(normalized, now_dt)
+        else:
+            mode, trigger_key = "day", None
+        self._apply_mode(mode, trigger_key=trigger_key, reason="config_update")
+        return self.snapshot()
+
+    def snapshot(self) -> Dict[str, Any]:
+        with self._lock:
+            data = dict(self._data)
+        now_dt = datetime.now(self._tzinfo)
+        active_mode, _ = self._current_mode_and_key(data, now_dt)
+        return {
+            "enabled": bool(data["enabled"]),
+            "start_hhmm": data["start_hhmm"],
+            "end_hhmm": data["end_hhmm"],
+            "day_pdc_target_c": float(data["day_pdc_target_c"]),
+            "night_pdc_target_c": float(data["night_pdc_target_c"]),
+            "day_recirc_target_c": float(data["day_recirc_target_c"]),
+            "night_recirc_target_c": float(data["night_recirc_target_c"]),
+            "active_mode": active_mode if data["enabled"] else "day",
+            "night_active": bool(data["enabled"] and active_mode == "night"),
+            "last_applied_mode": data.get("last_applied_mode"),
+            "last_applied_at": data.get("last_applied_at"),
+            "last_result": data.get("last_result"),
+        }
+
+    def _loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                self._tick()
+            except Exception:
+                logger.exception("ACSNightEcoScheduler tick error")
+            if self._stop.wait(ACS_NIGHT_ECO_POLL_S):
+                break
+
+    def _tick(self) -> None:
+        with self._lock:
+            data = dict(self._data)
+
+        if not data.get("enabled"):
+            return
+
+        mode, trigger_key = self._current_mode_and_key(
+            data,
+            datetime.now(self._tzinfo),
+        )
+        if trigger_key == data.get("last_applied_key"):
+            return
+        self._apply_mode(mode, trigger_key=trigger_key, reason="schedule")
+
+    def _apply_mode(self, mode: str, *, trigger_key: Optional[str], reason: str) -> None:
+        snapshot = self._snapshot_fn() if callable(self._snapshot_fn) else {}
+        current_setpoints = {}
+        if isinstance(snapshot, dict):
+            current_setpoints = snapshot.get("setpoints") or {}
+
+        with self._lock:
+            data = dict(self._data)
+
+        target_setpoints = self._target_setpoints(data, mode)
+        changes = []
+        for key, target in target_setpoints.items():
+            current_value = self._try_float(current_setpoints.get(key))
+            if current_value is not None and abs(current_value - target) < 0.05:
+                continue
+            ok = bool(self._publish_cmd({"setpoint": {"key": key, "value": target}}))
+            changes.append("{}={}({})".format(key, target, "ok" if ok else "fail"))
+            if not ok:
+                self._mark_applied(
+                    mode,
+                    trigger_key,
+                    "publish_failed:{}:{}".format(reason, key),
+                )
+                logger.warning(
+                    "ACSNightEcoScheduler publish failed mode=%s key=%s", mode, key
+                )
+                return
+
+        result = "no_change:{}".format(reason) if not changes else "applied:{}:{}".format(
+            reason,
+            ",".join(changes),
+        )
+        self._mark_applied(mode, trigger_key, result)
+
+    def _mark_applied(
+        self,
+        mode: str,
+        trigger_key: Optional[str],
+        result: str,
+    ) -> None:
+        with self._lock:
+            self._data["last_applied_mode"] = str(mode)
+            self._data["last_applied_key"] = trigger_key
+            self._data["last_applied_at"] = int(time.time())
+            self._data["last_result"] = str(result)
+            self._save_unlocked()
+
+    def _target_setpoints(self, data: Dict[str, Any], mode: str) -> Dict[str, float]:
+        if mode == "night":
+            return {
+                "pdc_target_c": float(data["night_pdc_target_c"]),
+                "recirc_target_c": float(data["night_recirc_target_c"]),
+            }
+        return {
+            "pdc_target_c": float(data["day_pdc_target_c"]),
+            "recirc_target_c": float(data["day_recirc_target_c"]),
+        }
+
+    def _current_mode_and_key(
+        self, data: Dict[str, Any], now_dt: datetime
+    ) -> tuple[str, Optional[str]]:
+        if not data.get("enabled"):
+            return "day", None
+
+        night_active = self._is_night_active(
+            data["start_hhmm"],
+            data["end_hhmm"],
+            now_dt,
+        )
+        if night_active:
+            start_hour, start_minute = self._split_hhmm(data["start_hhmm"])
+            start_minutes = start_hour * 60 + start_minute
+            now_minutes = now_dt.hour * 60 + now_dt.minute
+            anchor_dt = now_dt
+            if self._window_crosses_midnight(data["start_hhmm"], data["end_hhmm"]) and now_minutes < start_minutes:
+                anchor_dt = now_dt - timedelta(days=1)
+            return "night", "night:{}".format(anchor_dt.strftime("%Y%m%d"))
+        return "day", "day:{}".format(now_dt.strftime("%Y%m%d"))
+
+    def _is_night_active(self, start_hhmm: str, end_hhmm: str, now_dt: datetime) -> bool:
+        start_hour, start_minute = self._split_hhmm(start_hhmm)
+        end_hour, end_minute = self._split_hhmm(end_hhmm)
+        start_total = start_hour * 60 + start_minute
+        end_total = end_hour * 60 + end_minute
+        now_total = now_dt.hour * 60 + now_dt.minute
+
+        if start_total < end_total:
+            return start_total <= now_total < end_total
+        return now_total >= start_total or now_total < end_total
+
+    def _window_crosses_midnight(self, start_hhmm: str, end_hhmm: str) -> bool:
+        start_hour, start_minute = self._split_hhmm(start_hhmm)
+        end_hour, end_minute = self._split_hhmm(end_hhmm)
+        return (start_hour * 60 + start_minute) > (end_hour * 60 + end_minute)
+
+    def _load(self) -> None:
+        try:
+            payload = json.loads(ACS_NIGHT_ECO_FILE.read_text())
+        except Exception:
+            return
+
+        if not isinstance(payload, dict):
+            return
+
+        try:
+            normalized = {
+                "enabled": bool(payload.get("enabled", self._DEFAULT["enabled"])),
+                "start_hhmm": self._normalize_time_hhmm(payload.get("start_hhmm", self._DEFAULT["start_hhmm"])),
+                "end_hhmm": self._normalize_time_hhmm(payload.get("end_hhmm", self._DEFAULT["end_hhmm"])),
+                "day_pdc_target_c": self._normalize_target(payload.get("day_pdc_target_c", self._DEFAULT["day_pdc_target_c"]), low=20.0, high=95.0),
+                "night_pdc_target_c": self._normalize_target(payload.get("night_pdc_target_c", self._DEFAULT["night_pdc_target_c"]), low=20.0, high=95.0),
+                "day_recirc_target_c": self._normalize_target(payload.get("day_recirc_target_c", self._DEFAULT["day_recirc_target_c"]), low=20.0, high=80.0),
+                "night_recirc_target_c": self._normalize_target(payload.get("night_recirc_target_c", self._DEFAULT["night_recirc_target_c"]), low=20.0, high=80.0),
+                "last_applied_mode": payload.get("last_applied_mode"),
+                "last_applied_key": payload.get("last_applied_key"),
+                "last_applied_at": self._normalize_optional_int(payload.get("last_applied_at")),
+                "last_result": payload.get("last_result"),
+            }
+            self._validate_targets(normalized)
+        except Exception as e:
+            logger.warning("ACSNightEcoScheduler load error: %s", e)
+            return
+
+        with self._lock:
+            self._data.update(normalized)
+
+    def _save_unlocked(self) -> None:
+        ACS_NIGHT_ECO_FILE.parent.mkdir(parents=True, exist_ok=True)
+        ACS_NIGHT_ECO_FILE.write_text(json.dumps(self._data))
+
+    def _normalize_time_hhmm(self, value: Any) -> str:
+        hour, minute = self._split_hhmm(value)
+        return "{:02d}:{:02d}".format(hour, minute)
+
+    def _split_hhmm(self, value: Any) -> tuple[int, int]:
+        parts = str(value or "").strip().split(":")
+        if len(parts) != 2:
+            raise ValueError("time_hhmm deve essere HH:MM")
+        hour = int(parts[0])
+        minute = int(parts[1])
+        if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+            raise ValueError("time_hhmm non valido")
+        return hour, minute
+
+    def _normalize_target(self, value: Any, *, low: float, high: float) -> float:
+        target = float(value)
+        if target < low or target > high:
+            raise ValueError("target fuori range")
+        return round(target, 1)
+
+    def _validate_targets(self, data: Dict[str, Any]) -> None:
+        start_hhmm = data["start_hhmm"]
+        end_hhmm = data["end_hhmm"]
+        if start_hhmm == end_hhmm:
+            raise ValueError("La fascia notte non puo avere stesso orario di inizio e fine")
+        if float(data["night_pdc_target_c"]) > float(data["day_pdc_target_c"]):
+            raise ValueError("Il target PDC notte deve essere <= del target giorno")
+        if float(data["night_recirc_target_c"]) > float(data["day_recirc_target_c"]):
+            raise ValueError("Il target ricircolo notte deve essere <= del target giorno")
+
+    def _normalize_optional_int(self, value: Any) -> Optional[int]:
+        if value in (None, ""):
+            return None
+        return int(value)
+
+    def _try_float(self, value: Any) -> Optional[float]:
+        try:
+            return float(value)
+        except Exception:
+            return None
+
+
+__all__ = [
+    "ACSStore",
+    "ACSMQTTBridge",
+    "ACSAntilegScheduler",
+    "ACSNightEcoScheduler",
+    "ACS_ROLES",
+]

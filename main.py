@@ -20,6 +20,7 @@ from control_c2 import control_c2_task
 from control_recirc import control_recirc_task
 from control_block2_pool_heat_pdc import control_block2_task
 from comms_mqtt import mqtt_task
+from ota_update import ota_boot_confirm, ota_task
 
 _actuator_mgr = None
 _plc_io = None
@@ -91,6 +92,7 @@ async def main():
 
     print('[boot] {} skeleton'.format(config.BOARD_NAME))
     await eth_connect()
+    ota_boot_confirm()
     state.load_settings()
 
     i2c = I2C(
@@ -125,6 +127,8 @@ async def main():
     ]
     if config.MQTT_ENABLED:
         tasks.append(asyncio.create_task(mqtt_task()))
+    if getattr(config, 'OTA_ENABLED', False):
+        tasks.append(asyncio.create_task(ota_task()))
 
     print('[boot] skeleton avviato con {} task'.format(len(tasks)))
     while True:
